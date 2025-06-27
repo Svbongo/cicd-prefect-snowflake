@@ -1,0 +1,19 @@
+# Ignore Python virtual environment
+venv/
+
+# Ignore environment variables
+.env
+.env.*
+
+# Ignore Prefect config file
+prefect.yaml
+
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+
+# VS Code / Windsurf config
+.vscode/
+
+# macOS metadata
+.DS_Store
