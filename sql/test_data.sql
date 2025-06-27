@@ -1,0 +1,7 @@
+USE DATABASE DEMO_DB;
+USE SCHEMA DATA_PIPELINE;
+
+INSERT INTO raw_data (id, data) VALUES
+(1, 10),
+(2, 25),
+(3, 40);
