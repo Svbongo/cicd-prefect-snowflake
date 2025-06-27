@@ -3,12 +3,42 @@ name: Prefect Snowflake CI/CD
 on:
   push:
     branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
-  run-prefect-flow:
+  validate-sql:
+    name: Validate SQL Files
     runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        
+      - name: Validate SQL syntax
+        run: |
+          # This is a basic validation - you might want to add more specific checks
+          for sql_file in $(find sql -name '*.sql'); do
+            echo "Validating $sql_file"
+            # Check if file exists and is not empty
+            if [ ! -s "$sql_file" ]; then
+              echo "Error: $sql_file is empty"
+              exit 1
+            fi
+            # Simple syntax check (this is basic - consider using a proper SQL linter)
+            if ! grep -q ";" "$sql_file"; then
+              echo "Error: $sql_file appears to be missing SQL statement terminators (;)"
+              exit 1
+            fi
+          done
 
+  deploy:
+    name: Deploy to Snowflake
+    needs: validate-sql
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    
     env:
       SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
       SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
