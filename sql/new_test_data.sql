@@ -1,2 +1,4 @@
--- sql/new_test_data.sql
+USE DATABASE DEMO_DB;
+USE SCHEMA DATA_PIPELINE;
+
 INSERT INTO raw_data (id, data) VALUES (6, 250);
