@@ -1,6 +1,8 @@
 from prefect import flow, task
 import snowflake.connector
 import os
+from dotenv import load_dotenv
+load_dotenv()
 
 @task
 def run_sql_file(file_path):
