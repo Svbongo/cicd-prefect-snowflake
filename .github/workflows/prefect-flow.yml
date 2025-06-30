@@ -50,8 +50,24 @@ jobs:
           
       - name: Lint SQL files
         run: |
-          # Configure SQLFluff for Snowflake
-          sqlfluff configure --dialect snowflake
+          # Create .sqlfluff config file
+          cat > .sqlfluff << 'EOL'
+          [sqlfluff]
+          templater = raw
+          dialect = snowflake
+          
+          [sqlfluff:rules]
+          max_line_length = 120
+          
+          [sqlfluff:rules:L010]
+          capitalisation_policy = upper
+          
+          [sqlfluff:rules:L014]
+          extended_capitalisation_policy = lower
+          
+          [sqlfluff:rules:L030]
+          capitalisation_policy = upper
+          EOL
           
           # Run linting
           find sql -name '*.sql' | xargs sqlfluff lint --dialect snowflake || \
