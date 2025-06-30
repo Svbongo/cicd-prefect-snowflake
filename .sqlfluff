@@ -1,0 +1,19 @@
+[sqlfluff]
+dialect = snowflake
+templater = raw
+exclude_rules = L009,L016,L031,L034  # optional: exclude line length, trailing newline, etc.
+
+[sqlfluff:rules]
+max_line_length = 120
+
+[sqlfluff:rules:L010]  # Keywords
+capitalisation_policy = upper
+
+[sqlfluff:rules:L014]  # Identifiers
+extended_capitalisation_policy = lower
+
+[sqlfluff:rules:L030]  # Function names
+capitalisation_policy = upper
+
+[sqlfluff:rules:L042]  # Subquery usage
+forbid_subquery_in = none

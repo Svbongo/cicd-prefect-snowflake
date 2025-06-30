@@ -184,11 +184,10 @@ def main_flow(sql_dir: str = "sql"):
             logger.info(f"  v{'.'.join(map(str, version))}: {path}")
     
     # Define the execution order of file types
-    execution_order = ['DDL', 'DML', 'Store_Procedures', 'Triggers']
+    execution_order = ['DDL', 'Store_Procedures','DML', 'Triggers']
     
     all_success = True
     
-    # Process each file type in order
     for file_type in execution_order:
         if file_type not in sql_files or not sql_files[file_type]:
             logger.info(f"\nNo {file_type} files to process")
@@ -198,26 +197,22 @@ def main_flow(sql_dir: str = "sql"):
         logger.info(f"Processing {file_type} files")
         logger.info(f"{'='*50}")
         
-        # Sort files by version (oldest first) and then by filename
+        # Sort files by version (lowest first), then filename
         files_sorted = sorted(
             sql_files[file_type],
-            key=lambda x: (Version(x[0]), str(x[1]).lower()))
+            key=lambda x: (Version(x[0]), str(x[1]).lower())
+        )
+
+        # Only take the top-most file
+        version, file_path = files_sorted[0]
+        version_str = '.'.join(map(str, version)) if version != (0,) else 'unversioned'
+        logger.info(f"\n⚡ Executing top {file_type} v{version_str}: {file_path.name}")
         
-        # Execute each file in version order
-        for version, file_path in files_sorted:
-            version_str = '.'.join(map(str, version)) if version != (0,) else 'unversioned'
-            logger.info(f"\nProcessing {file_type} v{version_str}: {file_path.name}")
-            success = run_sql_file(file_path)
-            
-            if not success:
-                logger.error(f"Failed to execute {file_path}")
-                all_success = False
-                # Continue with other files even if one fails
-    
-    if all_success:
-        logger.info("\n✅ All SQL files executed successfully")
-    else:
-        logger.error("\n❌ Some SQL files failed to execute")
+        success = run_sql_file(file_path)
+        if not success:
+            logger.error(f"❌ Failed to execute {file_path}")
+            all_success = False
+
         
     return all_success
 
