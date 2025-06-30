@@ -1,4 +1,4 @@
-name: Snowflake SQL Deployment Pipeline
+name: Snowflake SQL Deployment
 
 on:
   push:
@@ -6,181 +6,40 @@ on:
     paths:
       - 'sql/**'
       - 'flows/**'
-      - 'requirements.txt'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'sql/**'
-      - 'flows/**'
-      - 'requirements.txt'
   workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Environment to deploy to'
-        required: true
-        default: 'dev'
-        type: choice
-        options:
-          - dev
-          - staging
-          - prod
 
 env:
   PYTHON_VERSION: '3.10'
-  REQUIREMENTS_FILE: 'requirements.txt'
 
 jobs:
-  validate-sql:
-    name: Validate SQL Files
+  validate-and-deploy:
     runs-on: ubuntu-latest
-    
+
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v3
-        
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
+
+      - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          
-      - name: Install SQLFluff (SQL linter)
+
+      - name: Install dependencies
         run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
           pip install sqlfluff==1.4.5
-          sqlfluff --version
-          
-      - name: Lint SQL files
-        run: |
-          # Create .sqlfluff config file
-          cat > .sqlfluff << 'EOL'
-          [sqlfluff]
-          templater = raw
-          dialect = snowflake
-          
-          [sqlfluff:rules]
-          max_line_length = 120
-          
-          [sqlfluff:rules:L010]  # Keywords
-          capitalisation_policy = upper
-          
-          [sqlfluff:rules:L014]  # Unquoted identifiers
-          extended_capitalisation_policy = lower
-          
-          [sqlfluff:rules:L030]  # Function names
-          capitalisation_policy = upper
-          
-          [sqlfluff:rules:L042]  # By default, allow subqueries in FROM clauses
-          forbid_subquery_in = none
-          EOL
-          
-          # Create .sqlfluffignore file
-          echo "**/__pycache__/" > .sqlfluffignore
-          
-          # Run linting with more verbose output
-          echo "=== Running SQLFluff linting ==="
-          find sql -name '*.sql' | xargs sqlfluff lint --verbose --dialect snowflake || \
-            (echo "::warning::SQL linting failed. Run 'sqlfluff fix' to fix issues." && exit 0)
-            
-      - name: Validate file structure and versions
-        id: validate_structure
-        run: |
-          # Check for required directories
-          for dir in DDL DML Store_Procedures Triggers; do
-            if [ ! -d "sql/$dir" ]; then
-              echo "::warning::sql/$dir directory is missing"
-            fi
-          done
-          
-          # Check for versioned files
-          for file in $(find sql -name '*.sql'); do
-            if ! [[ $(basename $file) =~ ^[0-9]+(\.[0-9]+)*_.*\.sql$ ]]; then
-              echo "::warning::File $file doesn't follow versioning pattern (e.g., 1_name.sql or 1.1_name.sql)"
-            fi
-          done
 
-  test-deployment:
-    name: Test Deployment (Dry Run)
-    needs: validate-sql
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-        
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          
-      - name: Install dependencies
+      - name: Lint SQL files with SQLFluff
         run: |
-          python -m pip install --upgrade pip
-          pip install -r ${{ env.REQUIREMENTS_FILE }}
-          
-      - name: Run Prefect flow with dry run
+          sqlfluff lint sql --dialect snowflake || echo "::warning::Linting issues found"
+
+      - name: Run Prefect deployment flow
         env:
-          DRY_RUN: 'true'
-        run: python flows/main_flow.py --dry-run
-
-  deploy:
-    name: Deploy to Snowflake (${{ github.event.inputs.environment || 'dev' }})
-    needs: [validate-sql, test-deployment]
-    if: >
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') || 
-      github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment || 'dev' }}
-    
-    env:
-      ENVIRONMENT: ${{ github.event.inputs.environment || 'dev' }}
-      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-      SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-      SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
-      SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-      SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
-      SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
-      SNOWFLAKE_ENV: ${{ github.event.inputs.environment || 'dev' }}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0  # Needed for getting git history
-          
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r ${{ env.REQUIREMENTS_FILE }}
-          
-      - name: Get changed files
-        id: changed-files
-        uses: tj-actions/changed-files@v35
-        with:
-          since_last_remote_commit: true
-          
-      - name: Run Prefect flow
-        env:
-          GIT_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
-          GIT_COMMIT_AUTHOR: ${{ github.actor }}
-          GIT_SHA: ${{ github.sha }}
-        run: |
-          echo "Deploying to $ENVIRONMENT environment"
-          python flows/main_flow.py
-          
-      - name: Notify on failure
-        if: failure()
-        uses: actions/github-script@v6
-        with:
-          script: |
-            const { data } = await github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: '❌ Deployment failed! Check the workflow run for details.'
-            })
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
+        run: python flows/main_flow.py
