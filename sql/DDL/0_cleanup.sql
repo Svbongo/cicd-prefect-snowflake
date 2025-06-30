@@ -3,12 +3,10 @@
 -- WARNING: This permanently deletes all schemas and their contents.
 -- =============================================
 
-USE DATABASE IDENTIFIER(CURRENT_DATABASE());
-
 BEGIN
     LET drop_commands ARRAY;
 
-    -- Get all user-created schemas, excluding system schemas
+    -- Get all non-system schemas
     LET schemas RESULTSET := (
         SELECT SCHEMA_NAME 
         FROM INFORMATION_SCHEMA.SCHEMATA 
@@ -24,7 +22,7 @@ BEGIN
         drop_commands := ARRAY_APPEND(drop_commands, drop_stmt);
     END FOR;
 
-    -- Execute all DROP statements together
+    -- Execute all DROP statements
     IF (ARRAY_SIZE(drop_commands) > 0) THEN
         EXECUTE IMMEDIATE 'BEGIN ' || 
                           ARRAY_TO_STRING(drop_commands, '; ') || 
