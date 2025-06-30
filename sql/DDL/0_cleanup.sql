@@ -1,35 +1,35 @@
--- Script to clean up all schemas in the database (except system schemas)
--- This should be the first script to run (version 0)
+-- =============================================
+-- DROP ALL NON-SYSTEM SCHEMAS IN DATABASE
+-- WARNING: This permanently deletes all schemas and their contents.
+-- =============================================
 
--- Set the database and schema context
 USE DATABASE IDENTIFIER(CURRENT_DATABASE());
 
--- Generate and execute DROP SCHEMA statements for all non-system schemas
 BEGIN
     LET drop_commands ARRAY;
-    
-    -- Get all non-system schemas
-    LET schemas RESULTSET := (SELECT SCHEMA_NAME 
-                             FROM INFORMATION_SCHEMA.SCHEMATA 
-                             WHERE SCHEMA_NAME NOT IN ('INFORMATION_SCHEMA', 'PUBLIC')
-                               AND SCHEMA_OWNER != 'SYSTEM');
-    
-    -- Build drop commands
-    LET i INTEGER DEFAULT 0;
+
+    -- Get all user-created schemas, excluding system schemas
+    LET schemas RESULTSET := (
+        SELECT SCHEMA_NAME 
+        FROM INFORMATION_SCHEMA.SCHEMATA 
+        WHERE SCHEMA_NAME NOT IN ('INFORMATION_SCHEMA', 'PUBLIC')
+          AND SCHEMA_OWNER != 'SYSTEM'
+    );
+
+    -- Loop through schemas and build DROP statements
     FOR s IN schemas DO
         LET schema_name VARCHAR := s.SCHEMA_NAME;
-        LET drop_stmt VARCHAR := 'DROP SCHEMA IF EXISTS ' || schema_name || ' CASCADE';
+        LET drop_stmt VARCHAR := 'DROP SCHEMA IF EXISTS "' || schema_name || '" CASCADE';
         
-        -- Add to our array of commands
         drop_commands := ARRAY_APPEND(drop_commands, drop_stmt);
     END FOR;
-    
-    -- Execute all drop commands
+
+    -- Execute all DROP statements together
     IF (ARRAY_SIZE(drop_commands) > 0) THEN
         EXECUTE IMMEDIATE 'BEGIN ' || 
-                         ARRAY_TO_STRING(drop_commands, '; ') || 
-                         '; END;';
+                          ARRAY_TO_STRING(drop_commands, '; ') || 
+                          '; END;';
     END IF;
-    
-    RETURN 'Dropped ' || ARRAY_SIZE(drop_commands) || ' schemas';
+
+    RETURN '✅ Dropped ' || ARRAY_SIZE(drop_commands) || ' schemas (excluding system schemas)';
 END;
