@@ -120,12 +120,13 @@ def run_sql_file(file_path: Path) -> bool:
             
         # Get connection parameters from environment variables
         conn_params = {
-            "user": os.environ["SNOWFLAKE_USER"],
-            "password": os.environ["SNOWFLAKE_PASSWORD"],
-            "account": os.environ["SNOWFLAKE_ACCOUNT"],
-            "warehouse": os.environ.get("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH"),
-            "database": os.environ.get("SNOWFLAKE_DATABASE", "DEMO_DB"),
-            "schema": os.environ.get("SNOWFLAKE_SCHEMA", "DATA_PIPELINE")
+            "account": os.getenv("SNOWFLAKE_ACCOUNT"),
+            "user": os.getenv("SNOWFLAKE_USER"),
+            "password": os.getenv("SNOWFLAKE_PASSWORD"),
+            "role": os.getenv("SNOWFLAKE_ROLE"),
+            "warehouse": os.getenv("SNOWFLAKE_WAREHOUSE"),
+            "database": os.getenv("SNOWFLAKE_DATABASE"),
+            "schema": os.getenv("SNOWFLAKE_SCHEMA"),
         }
         
         logger.info(f"Connecting to Snowflake with params: {{k: '***' if 'password' in k.lower() else v for k, v in conn_params.items()}}")
