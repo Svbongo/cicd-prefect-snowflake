@@ -1,3 +1,4 @@
 prefect
 snowflake-connector-python
 python-dotenv
+sqlfluff
