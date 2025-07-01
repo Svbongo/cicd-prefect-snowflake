@@ -1,21 +1,33 @@
-CREATE OR REPLACE PROCEDURE DEMO_DB.DATA_PIPELINE.DROP_ALL_TABLES()
-RETURNS VARCHAR
-LANGUAGE SQL
-EXECUTE AS OWNER
-AS '
-DECLARE
-    cur CURSOR FOR
-        SELECT ''DROP TABLE IF EXISTS "'' || table_schema || ''"."'' || table_name || ''";'' AS stmt
-        FROM information_schema.tables
-        WHERE table_schema = CURRENT_SCHEMA()
-          AND table_type = ''BASE TABLE'';
-    sql_stmt STRING;
-BEGIN
-    FOR record IN cur DO
-        sql_stmt := record.stmt;
-        EXECUTE IMMEDIATE :sql_stmt;
-    END FOR;
+-- Drop the procedure if it exists
+DROP PROCEDURE IF EXISTS DEMO_DB.DATA_PIPELINE.DROP_ALL_TABLES();
 
-    RETURN ''✅ All base tables dropped successfully.'';
-END;
-';
+-- Create the procedure with proper Snowflake Scripting syntax
+CREATE OR REPLACE PROCEDURE DEMO_DB.DATA_PIPELINE.DROP_ALL_TABLES()
+RETURNS STRING
+LANGUAGE JAVASCRIPT
+EXECUTE AS CALLER
+AS
+$$
+    try {
+        var tables = snowflake.execute({
+            sqlText: `
+                SELECT TABLE_SCHEMA, TABLE_NAME 
+                FROM INFORMATION_SCHEMA.TABLES 
+                WHERE TABLE_SCHEMA = CURRENT_SCHEMA() 
+                AND TABLE_TYPE = 'BASE TABLE'`
+        });
+        
+        var count = 0;
+        while (tables.next()) {
+            var schema = tables.getColumnValue(1);
+            var table = tables.getColumnValue(2);
+            var stmt = `DROP TABLE IF EXISTS "${schema}"."${table}"`;
+            snowflake.execute({sqlText: stmt});
+            count++;
+        }
+        
+        return `✅ Successfully dropped ${count} tables.`;
+    } catch (err) {
+        return `❌ Error: ${err}`;
+    }
+$$;
