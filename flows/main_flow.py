@@ -1,3 +1,5 @@
+import logging
+import sys
 from prefect import flow, task, get_run_logger
 import snowflake.connector
 import os
@@ -7,6 +9,15 @@ from dotenv import load_dotenv
 from typing import List, Optional, Tuple, Dict, Union, Any
 from collections import defaultdict
 from functools import total_ordering
+
+# Configure root logger to capture all output
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+root_logger.addHandler(handler)
 
 # Load environment variables from .env file if it exists
 load_dotenv()
@@ -61,142 +72,177 @@ def get_sql_files(directory: str) -> Dict[str, List[Tuple[Tuple[Union[int, str],
     """
     Get all SQL files in the directory, organized by file type (DDL, DML, etc.).
     
-    Expected file naming pattern: 
-    - DDL/1_name.sql, DDL/2_name.sql, etc.
-    - DML/1_name.sql, DML/2_name.sql, etc.
-    
     Returns:
         Dict mapping file type to list of (version, file_path) tuples
     """
     sql_files = defaultdict(list)
-    path = Path(directory)
+    base_path = Path(directory)
     
-    # Pattern to match version numbers at the start of filenames (supports decimals like 1.1, 2.0, etc.)
-    version_pattern = re.compile(r'^(\d+(?:\.\d+)*)(?:_|$)', re.IGNORECASE)
+    if not base_path.exists():
+        return {}
     
-    for sql_file in path.rglob('*.sql'):
-        # Get the relative path from the SQL directory
-        rel_path = sql_file.relative_to(directory)
+    # Look for SQL files in all subdirectories
+    for sql_file in base_path.glob('**/*.sql'):
+        # Get the parent directory name as the file type
+        file_type = sql_file.parent.name
         
-        # The first part of the path is the file type (DDL, DML, etc.)
-        if len(rel_path.parts) < 2:
-            continue  # Skip files in the root directory
-            
-        file_type = rel_path.parts[0]
-        file_stem = sql_file.stem
+        # Extract version from filename (e.g., "1_script.sql" -> "1")
+        version_part = sql_file.stem.split('_', 1)[0]
+        version = parse_version(version_part)
         
-        # Extract version from filename (number at the start)
-        match = version_pattern.match(file_stem)
-        if match:
-            version = parse_version(match.group(1))
-            sql_files[file_type].append((version, sql_file))
-        else:
-            # If no version number found, use 0 as default version
-            sql_files[file_type].append(((0,), sql_file))
+        sql_files[file_type].append((version, sql_file))
     
     return sql_files
 
 @task(name="Run SQL File")
 def run_sql_file(file_path: Path) -> bool:
-    """
-    Execute SQL commands from a file in Snowflake.
-    
-    Args:
-        file_path: Path to the SQL file to execute
-        
-    Returns:
-        bool: True if successful, False otherwise
-    """
+    """Execute SQL commands from a file with proper error handling and logging."""
     logger = get_run_logger()
-    logger.info(f"Executing SQL file: {file_path}")
+    logger.info("\n" + "="*80)
+    logger.info(f"📄 EXECUTING SQL FILE: {file_path}")
+    logger.info("="*80)
     
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            sql = f.read()
-            
-        if not sql.strip():
-            logger.warning(f"SQL file {file_path} is empty")
-            return True
-            
+        # Read and log the file content
+        with open(file_path, 'r') as f:
+            file_content = f.read()
+            logger.info(f"\nFile content:\n{file_content}")
+            sql_commands = [cmd.strip() for cmd in file_content.split(';') if cmd.strip()]
+        
         # Get connection parameters from environment variables
         conn_params = {
-            "account": os.getenv("SNOWFLAKE_ACCOUNT"),
             "user": os.getenv("SNOWFLAKE_USER"),
             "password": os.getenv("SNOWFLAKE_PASSWORD"),
+            "account": os.getenv("SNOWFLAKE_ACCOUNT"),
             "role": os.getenv("SNOWFLAKE_ROLE"),
             "warehouse": os.getenv("SNOWFLAKE_WAREHOUSE"),
             "database": os.getenv("SNOWFLAKE_DATABASE"),
             "schema": os.getenv("SNOWFLAKE_SCHEMA"),
+            "client_session_keep_alive": True
         }
         
-        logger.info(f"Connecting to Snowflake with params: {{k: '***' if 'password' in k.lower() else v for k, v in conn_params.items()}}")
+        # Log connection info (without password)
+        conn_info = {k: v for k, v in conn_params.items() if k != "password"}
+        logger.info("\n🔗 Connection Parameters:")
+        for k, v in conn_info.items():
+            logger.info(f"   {k}: {v}")
         
         with snowflake.connector.connect(**conn_params) as conn:
-            with conn.cursor() as cursor:
-                # Split SQL by semicolon and execute each statement
-                for stmt in [s.strip() for s in sql.split(";") if s.strip()]:
+            with conn.cursor() as cur:
+                # Log current session info
+                logger.info("\n🔍 Session Information:")
+                try:
+                    cur.execute("SELECT CURRENT_ACCOUNT(), CURRENT_REGION(), CURRENT_SESSION()")
+                    account, region, session = cur.fetchone()
+                    logger.info(f"   Account: {account}")
+                    logger.info(f"   Region: {region}")
+                    logger.info(f"   Session: {session}")
+                except Exception as e:
+                    logger.warning(f"Could not get session info: {e}")
+                
+                # Get current database and schema
+                cur.execute("SELECT CURRENT_DATABASE(), CURRENT_SCHEMA()")
+                db, schema = cur.fetchone()
+                logger.info(f"   Database: {db}")
+                logger.info(f"   Schema: {schema}")
+                
+                # List all stored procedures in the current schema
+                try:
+                    logger.info("\n📋 Available procedures in current schema:")
+                    cur.execute("""
+                        SELECT 
+                            procedure_name,
+                            procedure_definition
+                        FROM information_schema.procedures 
+                        WHERE procedure_schema = CURRENT_SCHEMA()
+                    """)
+                    procedures = cur.fetchall()
+                    if procedures:
+                        for proc in procedures:
+                            logger.info(f"   - {proc[0]}")
+                            logger.info(f"     {proc[1][:200]}...")
+                    else:
+                        logger.info("   No procedures found in current schema")
+                except Exception as e:
+                    logger.error(f"❌ Error listing procedures: {e}")
+                
+                # Execute each command
+                logger.info("\n🚀 Executing SQL commands:")
+                for i, cmd in enumerate(sql_commands, 1):
+                    if not cmd.strip():
+                        continue
+                        
+                    logger.info("\n" + "-"*60)
+                    logger.info(f"💻 Command {i}/{len(sql_commands)}:")
+                    logger.info(f"{cmd}")
+                    
                     try:
-                        logger.debug(f"Executing: {stmt[:100]}..." if len(stmt) > 100 else f"Executing: {stmt}")
-                        cursor.execute(stmt)
+                        cur.execute(cmd)
+                        logger.info("✅ Command executed successfully")
+                        
+                        # Try to fetch results if any
+                        try:
+                            results = cur.fetchall()
+                            if results:
+                                logger.info("📊 Results:")
+                                for row in results:
+                                    logger.info(f"   {row}")
+                        except Exception as fetch_error:
+                            # It's normal for some commands to not return results
+                            logger.debug(f"No results to fetch: {fetch_error}")
+                            
                     except Exception as e:
-                        logger.error(f"Error executing statement: {e}")
-                        logger.error(f"Failed statement: {stmt}")
+                        logger.error(f"❌ Error executing command: {e}")
+                        logger.error(f"Full command: {cmd}")
+                        logger.error(f"Error type: {type(e).__name__}")
+                        logger.error(f"Error details: {str(e)}")
                         return False
         
-        logger.info(f"Successfully executed {file_path}")
+        logger.info("\n✅ " + "="*50)
+        logger.info(f"✅ Successfully executed {file_path}")
+        logger.info("="*50 + "\n")
         return True
         
     except Exception as e:
-        logger.error(f"Error executing {file_path}: {str(e)}")
+        logger.error("\n❌ " + "="*50)
+        logger.error(f"❌ ERROR in run_sql_file: {e}")
+        logger.error(f"❌ Error type: {type(e).__name__}")
+        import traceback
+        logger.error("\nTraceback:" + "\n" + "\n".join(traceback.format_exc().splitlines()))
+        logger.error("="*50 + "\n")
         return False
 
 @flow(name="Snowflake SQL Deployment")
-def main_flow(sql_dir: str = "sql"):
-    """
-    Main flow that executes SQL files in version order from the specified directory.
-    
-    The function processes files in the following order:
-    1. DDL files (by version number, then alphabetically)
-    2. DML files (by version number, then alphabetically)
-    3. Store_Procedures files (by version number, then alphabetically)
-    4. Triggers files (by version number, then alphabetically)
-    
-    Args:
-        sql_dir: Directory containing SQL files in subdirectories by type
-        
-    Returns:
-        bool: True if all files were executed successfully, False otherwise
-    """
+def main_flow():
+    """Main flow to execute SQL files in version order."""
     logger = get_run_logger()
-    logger.info("Starting versioned SQL deployment flow")
+    logger.info("\n" + "="*50)
+    logger.info("🚀 Starting versioned SQL deployment flow")
     
-    # Get all SQL files organized by type and version
-    sql_files = get_sql_files(sql_dir)
-    
-    if not sql_files:
-        logger.warning(f"No SQL files found in {sql_dir}")
-        return True
+    # Find all SQL files
+    sql_files = get_sql_files("sql")
     
     # Log found files
-    logger.info("\nFound the following SQL files:")
+    logger.info("\n📁 Found the following SQL files:")
     for file_type, files in sql_files.items():
         logger.info(f"\n{file_type}:")
         for version, path in sorted(files, key=lambda x: x[0]):
-            logger.info(f"  v{'.'.join(map(str, version))}: {path}")
+            version_str = '.'.join(map(str, version)) if version != (0,) else 'unversioned'
+            logger.info(f"  v{version_str}: {path}")
     
     # Define the execution order of file types
-    execution_order = ['DDL', 'Store_Procedures','DML', 'Triggers']
+    execution_order = ['DDL', 'Store_Procedures', 'DML', 'Triggers']
     
     all_success = True
     
     for file_type in execution_order:
         if file_type not in sql_files or not sql_files[file_type]:
-            logger.info(f"\nNo {file_type} files to process")
+            logger.info(f"\nℹ️  No {file_type} files to process")
             continue
             
-        logger.info(f"\n{'='*50}")
-        logger.info(f"Processing {file_type} files")
-        logger.info(f"{'='*50}")
+        logger.info("\n" + "="*50)
+        logger.info(f"🔄 Processing {file_type} files")
+        logger.info("="*50)
         
         # Sort files by version (lowest first), then filename
         files_sorted = sorted(
@@ -204,17 +250,31 @@ def main_flow(sql_dir: str = "sql"):
             key=lambda x: (Version(x[0]), str(x[1]).lower())
         )
 
-        # Only take the top-most file
-        version, file_path = files_sorted[0]
-        version_str = '.'.join(map(str, version)) if version != (0,) else 'unversioned'
-        logger.info(f"\n⚡ Executing top {file_type} v{version_str}: {file_path.name}")
-        
-        success = run_sql_file(file_path)
-        if not success:
-            logger.error(f"❌ Failed to execute {file_path}")
-            all_success = False
-
-        
+        # Process all files in this directory
+        for version, file_path in files_sorted:
+            version_str = '.'.join(map(str, version)) if version != (0,) else 'unversioned'
+            logger.info(f"\n⚡ Executing {file_type} v{version_str}: {file_path.name}")
+            
+            try:
+                success = run_sql_file(file_path)
+                if not success:
+                    logger.error(f"❌ Failed to execute {file_path}")
+                    all_success = False
+                    # Continue with other files even if one fails
+                    continue
+                logger.info(f"✅ Successfully executed {file_path}")
+            except Exception as e:
+                logger.error(f"❌ Unexpected error executing {file_path}: {str(e)}")
+                all_success = False
+                continue
+    
+    # Final status
+    logger.info("\n" + "="*50)
+    if all_success:
+        logger.info("✨ All files processed successfully!")
+    else:
+        logger.error("❌ Some files failed to execute. Check the logs above for details.")
+    
     return all_success
 
 if __name__ == "__main__":
