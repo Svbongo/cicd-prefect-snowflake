@@ -31,7 +31,6 @@ jobs:
       - name: Normalize line endings
         run: dos2unix sql/**/*.sql || true
         
-
       - name: Run Prefect deployment flow
         env:
           SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
