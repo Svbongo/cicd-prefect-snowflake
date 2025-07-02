@@ -41,18 +41,14 @@ def get_sql_files(directory: str) -> Dict[str, List[Tuple[Tuple[Union[int, str],
 
 @task
 def run_sql_file(file_path: Path):
-    print(f"🚀 Executing file: {file_path.name}")
-
     with open(file_path, 'r') as f:
         sql_text = f.read()
 
-    # Check if file contains a procedure or script block
     if 'CREATE OR REPLACE PROCEDURE' in sql_text or 'LANGUAGE JAVASCRIPT' in sql_text or 'LANGUAGE SQL' in sql_text:
         sql_commands = [sql_text]
     else:
         sql_commands = [cmd.strip() for cmd in sql_text.split(';') if cmd.strip()]
 
-    # Load connection details from env vars
     conn_params = {
         "user": os.getenv("SNOWFLAKE_USER"),
         "password": os.getenv("SNOWFLAKE_PASSWORD"),
@@ -64,26 +60,42 @@ def run_sql_file(file_path: Path):
         "client_session_keep_alive": True
     }
 
-    # Debug print to ensure values are not None
+    print("🚀 Executing file:", file_path.name)
     print("🔍 Connection Parameters:")
     for k, v in conn_params.items():
         print(f"  {k}: {'✅ SET' if v else '❌ MISSING'}")
 
-    # Assert required keys are present
-    assert conn_params["user"], "❌ Missing SNOWFLAKE_USER"
-    assert conn_params["password"], "❌ Missing SNOWFLAKE_PASSWORD"
-    assert conn_params["account"], "❌ Missing SNOWFLAKE_ACCOUNT"
-    assert conn_params["database"], "❌ Missing SNOWFLAKE_DATABASE"
-    assert conn_params["schema"], "❌ Missing SNOWFLAKE_SCHEMA"
+    try:
+        with snowflake.connector.connect(**conn_params) as conn:
+            with conn.cursor() as cur:
+                # Step 1: Use the database
+                print(f"📁 Using database: {conn_params['database']}")
+                cur.execute(f"USE DATABASE {conn_params['database']}")
 
-    # Connect and execute SQL
-    with snowflake.connector.connect(**conn_params) as conn:
-        with conn.cursor() as cur:
-            cur.execute(f"USE DATABASE {conn_params['database']}")
-            cur.execute(f"USE SCHEMA {conn_params['schema']}")
-            for cmd in sql_commands:
-                print(f"🧠 Running SQL command:\n{cmd[:100]}...")  # preview first 100 chars
-                cur.execute(cmd)
+                # Step 2: Verify schema exists
+                print(f"🔍 Checking if schema exists: {conn_params['schema']}")
+                cur.execute(f"SHOW SCHEMAS LIKE '{conn_params['schema']}'")
+                schemas = cur.fetchall()
+
+                if not schemas:
+                    raise Exception(f"❌ Schema '{conn_params['schema']}' does not exist in database '{conn_params['database']}'")
+
+                # Step 3: Use the schema
+                print(f"📁 Using schema: {conn_params['schema']}")
+                cur.execute(f"USE SCHEMA {conn_params['schema']}")
+
+                # Step 4: Execute SQL
+                print(f"📦 Running SQL statements from {file_path.name}")
+                for cmd in sql_commands:
+                    if cmd:  # skip empty
+                        cur.execute(cmd)
+
+                print("✅ SQL execution complete for:", file_path.name)
+
+    except Exception as e:
+        print("❌ ERROR during SQL execution:")
+        print(str(e))
+        raise
 
 
 @flow
