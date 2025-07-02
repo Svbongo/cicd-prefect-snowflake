@@ -19,3 +19,5 @@ BEGIN
     RETURN ''✅ All base tables dropped.'';
 END;
 ';
+
+call drop_all_tables();
