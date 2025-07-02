@@ -1,1 +1,1 @@
-CALL DATA_PIPELINE.drop_all_tables();
+execute DATA_PIPELINE.drop_all_tables();

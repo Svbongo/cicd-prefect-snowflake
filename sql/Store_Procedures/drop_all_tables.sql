@@ -6,7 +6,7 @@ AS
 '
 DECLARE
     cur CURSOR FOR
-        SELECT ''DROP TABLE IF EXISTS "'' || table_schema || ''"."'' || table_name || ''";''
+        SELECT ''DROP TABLE IF EXISTS "'' || table_schema || ''"."'' || table_name || ''";'' AS stmt
         FROM information_schema.tables
         WHERE table_schema = CURRENT_SCHEMA()
           AND table_type = ''BASE TABLE'';

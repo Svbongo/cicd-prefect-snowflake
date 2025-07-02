@@ -27,10 +27,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-      
-      - name: Normalize line endings
-        run: dos2unix sql/**/*.sql || true
-        
+    
       - name: Run Prefect deployment flow
         env:
           SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
