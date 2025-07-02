@@ -42,7 +42,11 @@ def get_sql_files(directory: str) -> Dict[str, List[Tuple[Tuple[Union[int, str],
 @task
 def run_sql_file(file_path: Path):
     with open(file_path, 'r') as f:
-        sql_commands = [cmd.strip() for cmd in f.read().split(';') if cmd.strip()]
+        sql_text = f.read()
+    if 'CREATE OR REPLACE PROCEDURE' in sql_text or 'LANGUAGE JAVASCRIPT' in sql_text or 'LANGUAGE SQL' in sql_text:
+        sql_commands = [sql_text]
+    else:
+        sql_commands = [cmd.strip() for cmd in sql_text.split(';') if cmd.strip()]
 
     conn_params = {
         "user": os.getenv("SNOWFLAKE_USER"),
