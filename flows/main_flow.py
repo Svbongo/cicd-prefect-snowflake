@@ -41,13 +41,18 @@ def get_sql_files(directory: str) -> Dict[str, List[Tuple[Tuple[Union[int, str],
 
 @task
 def run_sql_file(file_path: Path):
+    print(f"🚀 Executing file: {file_path.name}")
+
     with open(file_path, 'r') as f:
         sql_text = f.read()
+
+    # Check if file contains a procedure or script block
     if 'CREATE OR REPLACE PROCEDURE' in sql_text or 'LANGUAGE JAVASCRIPT' in sql_text or 'LANGUAGE SQL' in sql_text:
         sql_commands = [sql_text]
     else:
         sql_commands = [cmd.strip() for cmd in sql_text.split(';') if cmd.strip()]
 
+    # Load connection details from env vars
     conn_params = {
         "user": os.getenv("SNOWFLAKE_USER"),
         "password": os.getenv("SNOWFLAKE_PASSWORD"),
@@ -59,10 +64,27 @@ def run_sql_file(file_path: Path):
         "client_session_keep_alive": True
     }
 
+    # Debug print to ensure values are not None
+    print("🔍 Connection Parameters:")
+    for k, v in conn_params.items():
+        print(f"  {k}: {'✅ SET' if v else '❌ MISSING'}")
+
+    # Assert required keys are present
+    assert conn_params["user"], "❌ Missing SNOWFLAKE_USER"
+    assert conn_params["password"], "❌ Missing SNOWFLAKE_PASSWORD"
+    assert conn_params["account"], "❌ Missing SNOWFLAKE_ACCOUNT"
+    assert conn_params["database"], "❌ Missing SNOWFLAKE_DATABASE"
+    assert conn_params["schema"], "❌ Missing SNOWFLAKE_SCHEMA"
+
+    # Connect and execute SQL
     with snowflake.connector.connect(**conn_params) as conn:
         with conn.cursor() as cur:
+            cur.execute(f"USE DATABASE {conn_params['database']}")
+            cur.execute(f"USE SCHEMA {conn_params['schema']}")
             for cmd in sql_commands:
+                print(f"🧠 Running SQL command:\n{cmd[:100]}...")  # preview first 100 chars
                 cur.execute(cmd)
+
 
 @flow
 def main_flow():
