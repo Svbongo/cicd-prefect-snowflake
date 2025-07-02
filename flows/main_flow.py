@@ -61,6 +61,9 @@ def run_sql_file(file_path: Path):
 
     with snowflake.connector.connect(**conn_params) as conn:
         with conn.cursor() as cur:
+            cur.execute(f"USE DATABASE {conn_params['SNOWFLAKE_DATABASE']}")
+            cur.execute(f"USE SCHEMA {conn_params['SNOWFLAKE_SCHEMA']}")
+
             for cmd in sql_commands:
                 cur.execute(cmd)
 
