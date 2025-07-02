@@ -1,9 +1,9 @@
 
-CREATE OR REPLACE PROCEDURE demo_db.data_pipeline.drop_all_tables()
+CREATE OR REPLACE PROCEDURE drop_all_tables()
 RETURNS STRING
 LANGUAGE SQL
 AS
-$$
+'
 DECLARE
     cur CURSOR FOR
         SELECT ''DROP TABLE IF EXISTS "'' || table_schema || ''"."'' || table_name || ''";''
@@ -18,4 +18,4 @@ BEGIN
     END FOR;
     RETURN ''✅ All base tables dropped.'';
 END;
-$$;
+';
