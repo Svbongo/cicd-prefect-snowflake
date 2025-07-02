@@ -63,7 +63,7 @@ def run_sql_file(file_path: Path):
     print("🚀 Executing file:", file_path.name)
     print("🔍 Connection Parameters:")
     for k, v in conn_params.items():
-        print(f"  {k}: {'✅ SET' if v else '❌ MISSING'}")
+        print(f"  {k}: {v if v else '❌ MISSING'}")
 
     try:
         with snowflake.connector.connect(**conn_params) as conn:
