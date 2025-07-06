@@ -24,8 +24,13 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      
-      - name: 📦 Install Python Dependencies
+
+      - name: 🧹 Lint SQL Files with sqlfluff
+        run: |
+          pip install sqlfluff
+          sqlfluff lint Snowflake/DEMO_DB/DATA_PIPELINE/ --dialect snowflake
+              
+      - name: 📦 Install Python Dependencies 
         run: |
           pip install -r requirements.txt
     
