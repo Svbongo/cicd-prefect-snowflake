@@ -100,19 +100,22 @@ def run_sql_file(file_path: Path):
 
 @flow
 def main_flow():
-    sql_files = get_sql_files("sql")
-    execution_order = ['DDL', 'Store_Procedures', 'DML', 'Triggers']
+    sql_files = get_sql_files("Snowflake/DEMO_DB/DATA_PIPELINE")
+
+    execution_order = ['Procedures', 'Tables','Views','Triggers']
+
 
     for file_type in execution_order:
         if file_type not in sql_files or not sql_files[file_type]:
             continue
-        files_sorted = sorted(
-            sql_files[file_type],
-            key=lambda x: (Version(x[0]), str(x[1]).lower()),
-            reverse=True
-        )
-        version, file_path = files_sorted[0]
-        run_sql_file(file_path)
+files_sorted = sorted(
+    sql_files[file_type],
+    key=lambda x: (Version(x[0]), str(x[1]).lower())
+)
+for version, file_path in files_sorted:
+    run_sql_file(file_path)
+
+
 
 if __name__ == "__main__":
     main_flow()
