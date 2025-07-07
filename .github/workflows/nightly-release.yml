@@ -2,8 +2,8 @@ name: Nightly SQL Draft Release
 
 on:
   schedule:
-    - cron: '0 6 * * *'  # Every day at 2 AM EST (6 AM UTC)
-  workflow_dispatch:     # Allow manual trigger
+    - cron: '0 6 * * *'  # 2 AM EST
+  workflow_dispatch:
 
 jobs:
   create-draft-release:
@@ -23,12 +23,6 @@ jobs:
         sudo apt update
         sudo apt install gh -y
 
-    - name: Authenticate GitHub CLI
-      env:
-        GH_TOKEN: ${{ secrets.HUB_TOKEN }}
-      run: |
-        echo "$GH_TOKEN" | gh auth login --with-token
-
     - name: Get latest release tag
       id: last_tag
       run: |
@@ -46,7 +40,6 @@ jobs:
         echo "$MODIFIED"
         echo "$MODIFIED" > sql_files.txt
 
-        # Save the list for later steps
         echo "sql_files<<EOF" >> $GITHUB_OUTPUT
         echo "$MODIFIED" >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
@@ -59,9 +52,11 @@ jobs:
         done
 
     - name: Create draft release with GitHub CLI
+      env:
+        GH_TOKEN: ${{ secrets.HUB_TOKEN }}
       run: |
         TAG="release-$(date +'%Y-%m-%d-%H%M')"
-        gh release create $TAG \
+        gh release create "$TAG" \
           --title "Nightly SQL Release - $TAG" \
           --notes-file release_notes.md \
           --target main \
