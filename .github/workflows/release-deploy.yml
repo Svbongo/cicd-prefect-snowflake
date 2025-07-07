@@ -37,15 +37,14 @@ jobs:
 
 
     - name: Extract SQL file list from release notes
-      id: extract
+      id: extract_sql
       run: |
-        NOTES="${{ github.event.release.body }}"
-        echo "Release notes:"
-        echo "$NOTES"
-
-        echo "$NOTES" | grep '\.sql' | sed 's/- //' > sql_files.txt
-        echo "✅ Extracted SQL files:"
+        echo "📄 Extracting SQL files from GitHub draft release"
+        NOTES=$(gh release view "$RELEASE_TAG" --json body -q '.body')
+        echo "$NOTES" | grep '\.sql' | sed 's/^ *[-*] *//' > sql_files.txt
+        echo "Extracted files:"
         cat sql_files.txt
+      
 
     - name: Run Prefect Flow for Deployment
       run: |
