@@ -34,6 +34,7 @@ jobs:
     - name: Install Dependencies
       run: |
         pip install -r flows/requirements.txt
+        pip install snowflake-connector-python==3.1.1
 
     - name: Extract SQL file list from release notes
       id: extract
