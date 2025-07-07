@@ -5,6 +5,9 @@ on:
     - cron: '0 6 * * *'  # 2 AM EST
   workflow_dispatch:
 
+permissions:
+  contents: write  # ✅ Add this
+
 jobs:
   create-draft-release:
     runs-on: ubuntu-latest
