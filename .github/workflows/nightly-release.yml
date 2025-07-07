@@ -47,7 +47,6 @@ jobs:
 
         echo "✅ Changed SQL files:"
         cat sql_files.txt || echo "No files found."
-
         echo "sql_files<<EOF" >> $GITHUB_OUTPUT
         cat sql_files.txt >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
@@ -69,3 +68,9 @@ jobs:
           --notes-file release_notes.md \
           --target main \
           --draft
+          
+    - name: Debug SQL files
+      run: |
+        echo "Detected SQL files:"
+        cat sql_files.txt
+        

@@ -35,3 +35,8 @@ jobs:
         # Create annotated tag and push
         git tag -a "$TAG" -m "Automated tag for $TAG"
         git push origin "$TAG"
+
+        - name: Debug SQL files
+  run: |
+    echo "Detected SQL files:"
+    cat sql_files.txt
