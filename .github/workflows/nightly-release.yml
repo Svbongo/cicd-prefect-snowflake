@@ -2,7 +2,7 @@ name: Nightly SQL Draft Release
 
 on:
   schedule:
-    - cron: '0 6 * * *'  # 2 AM EST (6 AM UTC)
+    - cron: '0 6 * * *'  # Runs daily at 2 AM EST
   workflow_dispatch:
 
 jobs:
@@ -13,20 +13,15 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Set up Git
+    - name: Set up Git config
       run: |
-        git config --global user.name "GitHub Action"
-        git config --global user.email "action@github.com"
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "actions@github.com"
 
     - name: Install GitHub CLI
       run: |
         sudo apt update
         sudo apt install gh -y
-
-    - name: Authenticate GitHub CLI
-      env:
-        GH_TOKEN: ${{ secrets.HUB_TOKEN }}
-      run: echo "${GH_TOKEN}" | gh auth login --with-token
 
     - name: Get latest release tag
       id: last_tag
@@ -37,8 +32,7 @@ jobs:
     - name: Find modified and new SQL files
       id: get_sqls
       run: |
-        source $GITHUB_ENV
-        echo "🧠 Detecting changed or added .sql files since tag: $LAST_TAG"
+        echo "🔍 Detecting changed or added .sql files since tag: $LAST_TAG"
 
         if [ -z "$LAST_TAG" ]; then
           echo "No previous tag found. Collecting all .sql files."
@@ -48,26 +42,27 @@ jobs:
           awk '$1 == "A" || $1 == "M" || $1 == "R100" { print $2 }' raw_sql_changes.txt > sql_files.txt
         fi
 
-        echo "✅ SQL files detected:"
-        cat sql_files.txt || echo "None"
+        echo "✅ SQL Files to include:"
+        cat sql_files.txt || echo "No files found."
+
+        echo "sql_files<<EOF" >> $GITHUB_OUTPUT
+        cat sql_files.txt >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
 
     - name: Skip if no SQL files changed
-      run: |
-        if [ ! -s sql_files.txt ]; then
-          echo "🚫 No SQL file changes. Skipping release."
-          exit 0
-        fi
+      if: steps.get_sqls.outputs.sql_files == ''
+      run: echo "❌ No SQL files changed. Skipping release."
 
-    - name: Create release notes
+    - name: Create release notes file
+      if: steps.get_sqls.outputs.sql_files != ''
       run: |
         echo "Modified SQL Files:" > release_notes.md
-        while read file; do
+        cat sql_files.txt | while read file; do
           echo "- $file" >> release_notes.md
-        done < sql_files.txt
+        done
 
     - name: Create draft release and upload SQL files
-      env:
-        GH_TOKEN: ${{ secrets.HUB_TOKEN }}
+      if: steps.get_sqls.outputs.sql_files != ''
       run: |
         TAG="release-$(date +'%Y-%m-%d-%H%M%S')"
         echo "Creating release with tag: $TAG"
@@ -78,7 +73,6 @@ jobs:
           --target main \
           --draft
 
-        # Upload changed SQL files to release
         while read file; do
           echo "Uploading $file"
           gh release upload "$TAG" "$file" --clobber
