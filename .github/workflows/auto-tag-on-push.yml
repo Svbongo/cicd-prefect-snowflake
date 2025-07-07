@@ -1,0 +1,36 @@
+name: Auto Tag on Push
+
+on:
+  push:
+    branches:
+      - main  # Change if you want to target a different branch
+
+permissions:
+  contents: write  # Required to create/push tags
+
+jobs:
+  tag-latest-commit:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Git config
+      run: |
+        git config --global user.name "github-actions"
+        git config --global user.email "actions@github.com"
+
+    - name: Generate timestamp-based tag and push
+      run: |
+        TAG="release-$(date +'%Y-%m-%d-%H%M')"
+        echo "Generated tag: $TAG"
+
+        # Prevent duplicate tagging
+        if git rev-parse "$TAG" >/dev/null 2>&1; then
+          echo "Tag $TAG already exists, skipping..."
+          exit 0
+        fi
+
+        git tag $TAG
+        git push origin $TAG

@@ -1,16 +1,17 @@
 -- Create Orders table
 CREATE OR REPLACE TABLE DATA_PIPELINE.Orders (
-    OrderID INT AUTOINCREMENT,
+    OrderID INT PRIMARY KEY,
     CustomerID INT,
-    OrderAmount FLOAT,
+    ProductID INT,
     OrderDate DATE,
-    FOREIGN KEY (CustomerID) REFERENCES DATA_PIPELINE.Customers(CustomerID)
+    Quantity INT,
+    FOREIGN KEY (CustomerID) REFERENCES DATA_PIPELINE.Customers(CustomerID),
+    FOREIGN KEY (ProductID) REFERENCES DATA_PIPELINE.Products(ProductID)
 );
 
 -- Insert sample data into Orders
-INSERT INTO DATA_PIPELINE.Orders (CustomerID, OrderAmount, OrderDate)
+INSERT INTO DATA_PIPELINE.Orders (OrderID, CustomerID, ProductID, OrderDate, Quantity)
 VALUES
-    (1, 250.75, '2024-06-01'),
-    (2, 100.00, '2024-06-15'),
-    (3, 300.50, '2024-06-20'),
-    (1, 75.25,  '2024-06-25');
+    (1, 1, 1, '2024-06-01', 2),
+    (2, 2, 2, '2024-06-15', 1),
+    (3, 3, 3, '2024-06-20', 3);

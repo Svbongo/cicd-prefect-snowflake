@@ -1,0 +1,68 @@
+name: Nightly SQL Draft Release
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # Every day at 2 AM EST (6 AM UTC)
+  workflow_dispatch:     # Allow manual trigger
+
+jobs:
+  create-draft-release:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Git
+      run: |
+        git config --global user.name "GitHub Action"
+        git config --global user.email "action@github.com"
+
+    - name: Install GitHub CLI
+      run: |
+        sudo apt update
+        sudo apt install gh -y
+
+    - name: Authenticate GitHub CLI
+      env:
+        GH_TOKEN: ${{ secrets.HUB_TOKEN }}
+      run: |
+        echo "$GH_TOKEN" | gh auth login --with-token
+
+    - name: Get latest release tag
+      id: last_tag
+      run: |
+        git fetch --tags
+        echo "LAST_TAG=$(git describe --tags --abbrev=0 || echo '')" >> $GITHUB_ENV
+
+    - name: Find modified SQL files
+      id: get_sqls
+      run: |
+        if [ -z "$LAST_TAG" ]; then
+          MODIFIED=$(git ls-files '*.sql')
+        else
+          MODIFIED=$(git diff --name-only $LAST_TAG HEAD | grep '\.sql$' || true)
+        fi
+        echo "$MODIFIED"
+        echo "$MODIFIED" > sql_files.txt
+
+        # Save the list for later steps
+        echo "sql_files<<EOF" >> $GITHUB_OUTPUT
+        echo "$MODIFIED" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: Create release notes file
+      run: |
+        echo "Modified SQL Files:" > release_notes.md
+        cat sql_files.txt | while read file; do
+          echo "- $file" >> release_notes.md
+        done
+
+    - name: Create draft release with GitHub CLI
+      run: |
+        TAG="release-$(date +'%Y-%m-%d-%H%M')"
+        gh release create $TAG \
+          --title "Nightly SQL Release - $TAG" \
+          --notes-file release_notes.md \
+          --target main \
+          --draft

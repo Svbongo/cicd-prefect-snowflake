@@ -1,0 +1,53 @@
+name: Deploy On Release
+
+on:
+  release:
+    types: [published]  # Triggers only when a release is published
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+    SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+    SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+    SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+    SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+    SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+    SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+    SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
+
+jobs:
+  deploy-sql-release:
+    runs-on: ubuntu-latest
+        
+    steps:
+    - name: Checkout Repo
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.13'
+
+    - name: Install Dependencies
+      run: |
+        pip install -r flows/requirements.txt
+
+    - name: Extract SQL file list from release notes
+      id: extract
+      run: |
+        NOTES="${{ github.event.release.body }}"
+        echo "Release notes:"
+        echo "$NOTES"
+
+        echo "$NOTES" | grep '\.sql' | sed 's/- //' > sql_files.txt
+        echo "✅ Extracted SQL files:"
+        cat sql_files.txt
+
+    - name: Run Prefect Flow for Deployment
+      run: |
+        while read file; do
+          echo "🚀 Executing $file"
+          python flows/main_flow.py --sql-path $file
+        done < sql_files.txt
