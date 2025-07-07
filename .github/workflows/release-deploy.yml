@@ -3,6 +3,7 @@ name: Deploy On Release
 on:
   release:
     types: [published]  # Triggers only when a release is published
+  workflow_dispatch:
 
 permissions:
   contents: read
