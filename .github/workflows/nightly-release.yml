@@ -29,20 +29,29 @@ jobs:
         git fetch --tags
         echo "LAST_TAG=$(git describe --tags --abbrev=0 || echo '')" >> $GITHUB_ENV
 
-    - name: Find modified SQL files
-      id: get_sqls
-      run: |
-        if [ -z "$LAST_TAG" ]; then
-          MODIFIED=$(git ls-files '*.sql')
-        else
-          MODIFIED=$(git diff --name-only $LAST_TAG HEAD | grep '\.sql$' || true)
-        fi
-        echo "$MODIFIED"
-        echo "$MODIFIED" > sql_files.txt
-
-        echo "sql_files<<EOF" >> $GITHUB_OUTPUT
-        echo "$MODIFIED" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
+        - name: Find modified and new SQL files
+        id: get_sqls
+        run: |
+          echo "🧠 Detecting changed or added .sql files since tag: $LAST_TAG"
+      
+          if [ -z "$LAST_TAG" ]; then
+            echo "No previous tag found. Collecting all .sql files."
+            git ls-files '*.sql' > sql_files.txt
+          else
+            git diff --name-status "$LAST_TAG"..HEAD | grep '\.sql$' || true > raw_sql_changes.txt
+      
+            # Extract files that are added (A), modified (M), or renamed (R)
+            awk '$1 == "A" || $1 == "M" || $1 == "R100" { print $2 }' raw_sql_changes.txt > sql_files.txt
+          fi
+      
+          echo "✅ Changed SQL files:"
+          cat sql_files.txt || echo "No files found."
+      
+          # Export to output
+          echo "sql_files<<EOF" >> $GITHUB_OUTPUT
+          cat sql_files.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+      
 
     - name: Create release notes file
       run: |
