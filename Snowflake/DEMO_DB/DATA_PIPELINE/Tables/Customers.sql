@@ -1,13 +1,13 @@
--- Create Customers table
-CREATE OR REPLACE TABLE DATA_PIPELINE.Customers (
+-- Customers Table
+CREATE OR REPLACE TABLE Customers (
     CustomerID INT PRIMARY KEY,
-    CustomerName STRING,
-    Email STRING
+    FirstName STRING,
+    LastName STRING,
+    Email STRING,
+    CreatedAt TIMESTAMP
 );
 
--- Insert sample data into Customers
-INSERT INTO DATA_PIPELINE.Customers (CustomerID, CustomerName, Email)
-VALUES
-    (1, 'Alice Smith', 'alice@example.com'),
-    (2, 'Bob Johnson', 'bob@example.com'),
-    (3, 'Carol Williams', 'carol@example.com');
+-- Insert into Customers
+INSERT INTO Customers VALUES 
+(1, 'John', 'Doe', 'john@example.com', CURRENT_TIMESTAMP),
+(2, 'Jane', 'Smith', 'jane@example.com', CURRENT_TIMESTAMP);

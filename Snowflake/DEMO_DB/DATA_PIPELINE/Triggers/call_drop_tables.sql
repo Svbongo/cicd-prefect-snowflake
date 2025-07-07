@@ -1,1 +1,0 @@
-call DEMO_DB.DATA_PIPELINE.drop_all_tables()

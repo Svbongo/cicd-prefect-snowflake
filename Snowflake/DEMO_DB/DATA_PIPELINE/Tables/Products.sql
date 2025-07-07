@@ -1,13 +1,14 @@
--- Create Products table
-CREATE OR REPLACE TABLE DATA_PIPELINE.Products (
+-- Products Table
+CREATE OR REPLACE TABLE Products (
     ProductID INT PRIMARY KEY,
     ProductName STRING,
-    Price FLOAT
+    Category STRING,
+    Price DECIMAL(10,2),
+    Stock INT
 );
 
--- Insert sample data into Products
-INSERT INTO DATA_PIPELINE.Products (ProductID, ProductName, Price)
-VALUES
-    (1, 'Toaster', 99.99),
-    (2, 'TV', 500.00),
-    (3, 'Laptop', 999.99);
+-- Insert into Products
+INSERT INTO Products VALUES 
+(100, 'Laptop', 'Electronics', 899.99, 20),
+(101, 'Headphones', 'Electronics', 49.99, 100),
+(102, 'Office Chair', 'Furniture', 149.99, 50);
