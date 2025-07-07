@@ -2,7 +2,7 @@ name: Nightly SQL Draft Release
 
 on:
   schedule:
-    - cron: '0 6 * * *'  # 2 AM EST
+    - cron: '0 6 * * *'  # 2 AM EST (6 AM UTC)
   workflow_dispatch:
 
 jobs:
@@ -23,51 +23,63 @@ jobs:
         sudo apt update
         sudo apt install gh -y
 
+    - name: Authenticate GitHub CLI
+      env:
+        GH_TOKEN: ${{ secrets.HUB_TOKEN }}
+      run: echo "${GH_TOKEN}" | gh auth login --with-token
+
     - name: Get latest release tag
       id: last_tag
       run: |
         git fetch --tags
         echo "LAST_TAG=$(git describe --tags --abbrev=0 || echo '')" >> $GITHUB_ENV
-      
 
     - name: Find modified and new SQL files
       id: get_sqls
       run: |
+        source $GITHUB_ENV
         echo "🧠 Detecting changed or added .sql files since tag: $LAST_TAG"
-      
-          if [ -z "$LAST_TAG" ]; then
-            echo "No previous tag found. Collecting all .sql files."
-            git ls-files '*.sql' > sql_files.txt
-          else
-            git diff --name-status "$LAST_TAG"..HEAD | grep '\.sql$' || true > raw_sql_changes.txt
-      
-            # Extract files that are added (A), modified (M), or renamed (R)
-            awk '$1 == "A" || $1 == "M" || $1 == "R100" { print $2 }' raw_sql_changes.txt > sql_files.txt
-          fi
-      
-          echo "✅ Changed SQL files:"
-          cat sql_files.txt || echo "No files found."
-      
-          # Export to output
-          echo "sql_files<<EOF" >> $GITHUB_OUTPUT
-          cat sql_files.txt >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-      
 
-    - name: Create release notes file
+        if [ -z "$LAST_TAG" ]; then
+          echo "No previous tag found. Collecting all .sql files."
+          git ls-files '*.sql' > sql_files.txt
+        else
+          git diff --name-status "$LAST_TAG"..HEAD | grep '\.sql$' || true > raw_sql_changes.txt
+          awk '$1 == "A" || $1 == "M" || $1 == "R100" { print $2 }' raw_sql_changes.txt > sql_files.txt
+        fi
+
+        echo "✅ SQL files detected:"
+        cat sql_files.txt || echo "None"
+
+    - name: Skip if no SQL files changed
+      run: |
+        if [ ! -s sql_files.txt ]; then
+          echo "🚫 No SQL file changes. Skipping release."
+          exit 0
+        fi
+
+    - name: Create release notes
       run: |
         echo "Modified SQL Files:" > release_notes.md
-        cat sql_files.txt | while read file; do
+        while read file; do
           echo "- $file" >> release_notes.md
-        done
+        done < sql_files.txt
 
-    - name: Create draft release with GitHub CLI
+    - name: Create draft release and upload SQL files
       env:
         GH_TOKEN: ${{ secrets.HUB_TOKEN }}
       run: |
-        TAG="release-$(date +'%Y-%m-%d-%H%M')"
+        TAG="release-$(date +'%Y-%m-%d-%H%M%S')"
+        echo "Creating release with tag: $TAG"
+
         gh release create "$TAG" \
           --title "Nightly SQL Release - $TAG" \
           --notes-file release_notes.md \
           --target main \
           --draft
+
+        # Upload changed SQL files to release
+        while read file; do
+          echo "Uploading $file"
+          gh release upload "$TAG" "$file" --clobber
+        done < sql_files.txt

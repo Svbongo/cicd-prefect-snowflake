@@ -1,12 +1,12 @@
-name: Auto Tag on Push
+name: Auto Tag on Push to Main
 
 on:
   push:
     branches:
-      - main  # Change if you want to target a different branch
+      - main  # Trigger only on main branch pushes
 
 permissions:
-  contents: write  # Required to create/push tags
+  contents: write  # Required to push tags to the repository
 
 jobs:
   tag-latest-commit:
@@ -23,7 +23,7 @@ jobs:
 
     - name: Generate timestamp-based tag and push
       run: |
-        TAG="release-$(date +'%Y-%m-%d-%H%M')"
+        TAG="LastCommit-$(date +'%Y-%m-%d-%H%M%S')"
         echo "Generated tag: $TAG"
 
         # Prevent duplicate tagging
@@ -32,5 +32,6 @@ jobs:
           exit 0
         fi
 
-        git tag $TAG
-        git push origin $TAG
+        # Create annotated tag and push
+        git tag -a "$TAG" -m "Automated tag for $TAG"
+        git push origin "$TAG"
