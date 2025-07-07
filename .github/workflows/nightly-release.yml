@@ -67,7 +67,7 @@ jobs:
           --title "Nightly SQL Release - $TAG" \
           --notes-file release_notes.md \
           --target main \
-          --draft
+
           
     - name: Debug SQL files
       run: |
