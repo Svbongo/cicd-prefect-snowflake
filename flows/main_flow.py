@@ -2,7 +2,9 @@ import os
 import argparse
 import glob
 from prefect import flow, task
-from utils.snowflake_utils import execute_sql_file
+import snowflake.connector
+from pathlib import Path
+
 
 @task
 def run_sql_file(file_path: Path):
