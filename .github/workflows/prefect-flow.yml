@@ -9,7 +9,7 @@ on:
   workflow_dispatch:         # Allow manual run from GitHub UI
 
 env:
-  PYTHON_VERSION: '3.10'
+  PYTHON_VERSION: '3.13'
 
 jobs:
   deploy-snowflake-sql:
