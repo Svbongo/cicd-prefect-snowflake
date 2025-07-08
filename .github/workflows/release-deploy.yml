@@ -32,18 +32,15 @@ jobs:
         pip install -r requirements.txt
 
     - name: Get Latest Release Notes
-      id: release
       uses: softprops/action-gh-release@v1
-      with:
-        tag_name: latest
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.HUB_TOKEN }}
 
     - name: Extract SQL File Paths from Release Notes
       run: |
         gh release view latest --json body --jq '.body' > release_notes.md
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.HUB_TOKEN }}
 
     - name: Run Prefect Flow
       run: |
