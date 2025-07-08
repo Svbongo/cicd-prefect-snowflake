@@ -53,13 +53,13 @@ jobs:
           echo "🔄 Final execution order:"
           cat sorted_sql.txt
 
-          - name: Run Prefect Flow
-          run: python flows/main_flow.py --release-notes release_notes.md
-          env:
-            SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-            SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-            SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-            SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
-            SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
-            SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+      - name: Run Prefect Flow
+        run: python flows/main_flow.py --release-notes release_notes.md
+        env:
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
         
