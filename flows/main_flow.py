@@ -51,7 +51,12 @@ def main_flow(release_notes_path="release_notes.md"):
     with open(release_notes_path, 'r') as f:
         lines = f.readlines()
 
-    sql_files = [line.strip(" \n*") for line in lines if line.strip().endswith(".sql")]
+    sql_files = [
+        line.strip().lstrip('-*• ').strip()
+        for line in lines
+        if line.strip().endswith(".sql")
+    ]
+
 
     # Sort by categories
     categorized = {key: [] for key in ORDER}
