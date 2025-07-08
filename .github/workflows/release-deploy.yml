@@ -32,9 +32,12 @@ jobs:
         pip install -r requirements.txt
 
     - name: Get Latest Release Notes
-      uses: softprops/action-gh-release@v1
+      run: |
+        gh release view --json body --jq '.body' > release_notes.txt
       env:
-        GITHUB_TOKEN: ${{ secrets.HUB_TOKEN }}
+        GH_TOKEN: ${{ secrets.HUB_TOKEN }}
+      
+      
 
     - name: Extract SQL File Paths from Release Notes
       run: |
