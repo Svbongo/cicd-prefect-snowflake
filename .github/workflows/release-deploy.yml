@@ -34,13 +34,13 @@ jobs:
     - name: Get Latest Release Notes
       run: |
         curl -s -H "Authorization: token ${{ secrets.HUB_TOKEN }}" \
-             https://api.github.com/repos/${{ github.repository }}/releases/latest \
+             https://api.github.com/repos/${{ github.repository }}/releases/Nightly \
              | jq -r '.body' > release_notes.md
       
 
     - name: Extract SQL File Paths from Release Notes
       run: |
-        gh release view latest --json body --jq '.body' > release_notes.md
+        gh release view Nightly --json body --jq '.body' > release_notes.md
       env:
         GITHUB_TOKEN: ${{ secrets.HUB_TOKEN }}
 
