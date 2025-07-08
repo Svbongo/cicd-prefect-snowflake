@@ -7,28 +7,45 @@ ORDER = ["Tables", "Procedures", "Views", "Triggers"]
 
 # 🔁 Previously in utils.snowflake_utils
 def execute_sql_file(file_path):
-    with open(file_path, 'r') as f:
-        sql_statements = f.read().split(';')
+    user = os.environ['SNOWFLAKE_USER']
+    password = os.environ['SNOWFLAKE_PASSWORD']
+    account = os.environ['SNOWFLAKE_ACCOUNT']
+    database = os.environ['SNOWFLAKE_DATABASE']
+    schema = os.environ['SNOWFLAKE_SCHEMA']
+    warehouse = os.environ['SNOWFLAKE_WAREHOUSE']
 
-    conn = snowflake.connector.connect(
-        user=os.environ['SNOWFLAKE_USER'],
-        password=os.environ['SNOWFLAKE_PASSWORD'],
-        account=os.environ['SNOWFLAKE_ACCOUNT'],
-        warehouse=os.environ['SNOWFLAKE_WAREHOUSE'],
-        database=os.environ['SNOWFLAKE_DATABASE'],
-        schema=os.environ['SNOWFLAKE_SCHEMA'],
-        role=os.environ['SNOWFLAKE_ROLE']
+    ctx = snowflake.connector.connect(
+        user=user,
+        password=password,
+        account=account,
+        warehouse=warehouse,
+        database=database,
+        schema=schema
     )
-    cursor = conn.cursor()
+    cs = ctx.cursor()
+
     try:
-        for stmt in sql_statements:
-            stmt = stmt.strip()
-            if stmt:
-                print(f"⚙️ Running: {stmt[:50]}...")
-                cursor.execute(stmt)
+        with open(file_path, 'r') as f:
+            sql_script = f.read()
+
+        # Check for procedure file
+        if file_path.lower().endswith(".sql") and "create or replace procedure" in sql_script.lower():
+            print(f"⚙️ Executing full procedure file: {file_path}")
+            cs.execute(sql_script)
+        else:
+            print(f"📄 Executing statements from: {file_path}")
+            statements = [stmt.strip() for stmt in sql_script.split(';') if stmt.strip()]
+            for stmt in statements:
+                print(f"➡️ {stmt[:60]}{'...' if len(stmt) > 60 else ''}")
+                cs.execute(stmt)
+
+    except Exception as e:
+        print(f"❌ Failed: {e}")
+        raise e
     finally:
-        cursor.close()
-        conn.close()
+        cs.close()
+        ctx.close()
+
 
 @task
 def run_sql_file(filepath):
