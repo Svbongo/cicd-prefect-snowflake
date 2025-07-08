@@ -19,6 +19,10 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install Python Dependencies
+        run: |
+          pip install -r requirements.txt
+
       - name: Get Latest Release Tag
         id: get_release
         run: |
