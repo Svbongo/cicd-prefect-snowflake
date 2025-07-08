@@ -1,3 +1,4 @@
 prefect==2.14.6
 snowflake-connector-python
 python-dotenv
+griffe==0.36.4
