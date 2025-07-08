@@ -1,9 +1,34 @@
 import os
 import argparse
+import snowflake.connector
 from prefect import flow, task
-from utils.snowflake_utils import execute_sql_file
 
 ORDER = ["Tables", "Procedures", "Views", "Triggers"]
+
+# 🔁 Previously in utils.snowflake_utils
+def execute_sql_file(file_path):
+    with open(file_path, 'r') as f:
+        sql_statements = f.read().split(';')
+
+    conn = snowflake.connector.connect(
+        user=os.environ['SNOWFLAKE_USER'],
+        password=os.environ['SNOWFLAKE_PASSWORD'],
+        account=os.environ['SNOWFLAKE_ACCOUNT'],
+        warehouse=os.environ['SNOWFLAKE_WAREHOUSE'],
+        database=os.environ['SNOWFLAKE_DATABASE'],
+        schema=os.environ['SNOWFLAKE_SCHEMA'],
+        role=os.environ['SNOWFLAKE_ROLE']
+    )
+    cursor = conn.cursor()
+    try:
+        for stmt in sql_statements:
+            stmt = stmt.strip()
+            if stmt:
+                print(f"⚙️ Running: {stmt[:50]}...")
+                cursor.execute(stmt)
+    finally:
+        cursor.close()
+        conn.close()
 
 @task
 def run_sql_file(filepath):
