@@ -62,7 +62,6 @@ jobs:
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        TAG="release-$(date +'%Y-%m-%d-%H%M')"
         gh release create "$TAG" \
           --title "Nightly SQL Release - $TAG" \
           --notes-file release_notes.md \
