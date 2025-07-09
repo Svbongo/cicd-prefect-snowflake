@@ -58,31 +58,21 @@ def run_sql_file(filepath):
         raise e
 
 @flow(name="main-flow")
-def main_flow(release_notes_path="release_notes.md"):
-    print(f"📜 Reading release notes from: {release_notes_path}")
+def main_flow(release_notes_path="sorted_sql.txt"):
+    print(f"📜 Reading SQL file list from: {release_notes_path}")
     
     if not os.path.exists(release_notes_path):
         raise FileNotFoundError(f"{release_notes_path} not found")
 
-    # Read file paths from release notes
     with open(release_notes_path, 'r') as f:
-        lines = f.readlines()
+        sql_files = [line.strip() for line in f if line.strip().endswith(".sql")]
 
-    sql_files = [
-        line.strip().lstrip('-*• ').strip()
-        for line in lines
-        if line.strip().endswith(".sql")
-    ]
-
-
-    # Sort by categories
     categorized = {key: [] for key in ORDER}
     for path in sql_files:
         for category in ORDER:
             if f"/{category}/" in path or f"\\{category}\\" in path:
                 categorized[category].append(path)
 
-    # Execute in proper order
     for category in ORDER:
         print(f"\n📂 Category: {category}")
         if not categorized[category]:
@@ -90,6 +80,14 @@ def main_flow(release_notes_path="release_notes.md"):
             continue
         for file_path in categorized[category]:
             run_sql_file(file_path)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--release-notes", help="Path to sorted SQL file list", default="sorted_sql.txt")
+    args = parser.parse_args()
+    main_flow(release_notes_path=args.release_notes)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
