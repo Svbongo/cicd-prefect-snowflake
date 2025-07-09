@@ -59,13 +59,18 @@ jobs:
           echo "- $file" >> release_notes.md
         done
 
-    - name: Update release notes for existing tag
+    - name: Create or update release notes for tag
       env:
         GH_TOKEN: ${{ secrets.HUB_TOKEN }}
       run: |
-        gh release edit "$LATEST_TAG" \
-          --notes-file release_notes.md \
-          --draft
+        if gh release view "$LATEST_TAG" >/dev/null 2>&1; then
+          echo "📄 Release exists. Updating notes..."
+          gh release edit "$LATEST_TAG" --notes-file release_notes.md --draft
+        else
+          echo "🚀 Creating new draft release for $LATEST_TAG"
+          gh release create "$LATEST_TAG" --notes-file release_notes.md --draft --target main
+        fi
+      
 
     - name: Debug SQL files
       run: |
