@@ -87,7 +87,7 @@ jobs:
             "tag_name": "nightly-placeholder",
             "name": "Nightly SQL Release - $TIMESTAMP",
             "body": "$(cat release_notes.md)",
-            "draft": true,
+            "draft": false,
             "prerelease": false,
             "target_commitish": "cicd-sql-release"
           }
