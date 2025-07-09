@@ -13,36 +13,68 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Install GitHub CLI
-      run: |
-        sudo apt update
-        sudo apt install gh -y
+      - name: Set up Git
+        run: |
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
 
-    - name: Detect new/modified .sql files
-      run: |
-        git fetch --tags
-        echo "Modified SQL Files:" > release_notes.md
-        git diff --name-only HEAD~10 | grep '\.sql$' >> release_notes.md || echo "No changes."
+      - name: Install GitHub CLI
+        run: |
+          sudo apt update
+          sudo apt install gh -y
 
-    - name: Create GitHub Release without a tag (via API)
-      env:
-        GH_TOKEN: ${{ secrets.HUB_TOKEN }}
-      run: |
-        TIMESTAMP=$(date +'%Y-%m-%d %H:%M:%S')
-        BODY=$(cat release_notes.md | jq -Rs .)
-        curl -X POST https://api.github.com/repos/${{ github.repository }}/releases \
-          -H "Authorization: token $GH_TOKEN" \
-          -H "Accept: application/vnd.github+json" \
-          -d "{
-            \"tag_name\": \"nightly-placeholder\",
-            \"target_commitish\": \"main\",
-            \"name\": \"Nightly Release $TIMESTAMP\",
-            \"body\": $BODY,
-            \"draft\": false,
-            \"prerelease\": false
-          }"
-  
+      - name: Detect new/modified .sql files
+        id: get_sqls
+        run: |
+          echo "🧠 Detecting new/modified .sql files..."
+
+          LAST_TAG=$(git tag --sort=-creatordate | head -n 1)
+
+          if [ -z "$LAST_TAG" ]; then
+            echo "⚠️ No tag found. Using last 10 commits."
+            git diff --name-status $(git rev-list --max-count=10 HEAD) | grep '\.sql$' || true > raw_sql_changes.txt
+          else
+            echo "📦 Latest tag: $LAST_TAG"
+            git diff --name-status "$LAST_TAG"..HEAD | grep '\.sql$' || true > raw_sql_changes.txt
+          fi
+
+          awk '$1 == "A" || $1 == "M" || $1 == "R100" { print $2 }' raw_sql_changes.txt > sql_files.txt
+
+          echo "sql_files<<EOF" >> $GITHUB_OUTPUT
+          cat sql_files.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Debug detected SQL files
+        run: |
+          echo "✅ Final .sql files found:"
+          cat sql_files.txt || echo "❌ No SQL files detected."
+
+      - name: Create release notes file
+        run: |
+          echo "Modified SQL Files:" > release_notes.md
+          cat sql_files.txt | while read file; do
+            echo "- $file" >> release_notes.md
+          done
+
+      - name: Create GitHub Release without a tag (via API)
+        env:
+          GH_TOKEN: ${{ secrets.HUB_TOKEN }}
+        run: |
+          TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+          curl -X POST \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/releases \
+            -d @- <<EOF
+          {
+            "tag_name": "nightly-placeholder",
+            "name": "Nightly SQL Release - $TIMESTAMP",
+            "body": "$(cat release_notes.md)",
+            "draft": true,
+            "prerelease": false,
+            "target_commitish": "${{ github.ref_name }}"
+          }
 
