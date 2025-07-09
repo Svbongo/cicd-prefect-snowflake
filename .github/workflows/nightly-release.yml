@@ -34,28 +34,28 @@ jobs:
         run: |
           set -eo pipefail
           echo "🧠 Detecting new/modified .sql files..."
-  
+
           LAST_TAG=$(git tag --sort=-creatordate | head -n 1)
           echo "🕓 Latest tag: $LAST_TAG"
-  
+
           git diff --name-status "$LAST_TAG"..HEAD > raw_diff.txt
-  
+
           echo "📄 Raw diff content:"
           cat raw_diff.txt
-  
+
           # Filter only .sql additions/modifications/renames
           grep '\.sql$' raw_diff.txt | awk '$1 ~ /^(A|M|R100)$/' > raw_sql_changes.txt || touch raw_sql_changes.txt
-  
+
           echo "📂 Filtered .sql changes:"
           cat raw_sql_changes.txt || echo "❌ No matching .sql changes"
-  
+
           # Extract paths only
           awk '{ print $2 }' raw_sql_changes.txt > sql_files.txt || touch sql_files.txt
-  
+
           echo "sql_files<<EOF" >> $GITHUB_OUTPUT
           cat sql_files.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-  
+
 
       - name: Debug detected files
         run: |
@@ -88,7 +88,7 @@ jobs:
             "tag_name": "nightly-placeholder",
             "name": "Nightly SQL Release - $TIMESTAMP",
             "body": "$(cat release_notes.md)",
-            "draft": false,
+            "draft": true,
             "prerelease": false,
             "target_commitish": "cicd-sql-release"
           }
