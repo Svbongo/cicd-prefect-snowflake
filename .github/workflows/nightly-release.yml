@@ -1,9 +1,9 @@
 name: Nightly SQL Draft Release
 
 on:
+  workflow_dispatch:        # Manual trigger option
   schedule:
-    - cron: '0 6 * * *'  # 2 AM EST
-  workflow_dispatch:
+    - cron: '0 6 * * *'     # Runs daily at 2 AM EST (6 AM UTC)
 
 permissions:
   contents: write
@@ -15,26 +15,29 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-        with:
-          fetch-depth: 0  # 👈 ensures full tag history
 
       - name: Set up Git
         run: |
-          git config --global user.name "GitHub Action"
+          git config --global user.name "GitHub Actions"
           git config --global user.email "action@github.com"
 
-      - name: Detect new/modified .sql files
-        id: get_sqls
+      - name: Install GitHub CLI
         run: |
-          echo "🧠 Detecting new/modified .sql files..."
+          sudo apt update
+          sudo apt install gh -y
 
-          LAST_TAG=$(git tag --sort=-creatordate | grep "^LastCommit-" | head -n 1)
+      - name: Detect modified SQL files since last tag
+        id: detect_sqls
+        run: |
+          echo "🔍 Finding modified .sql files since last tag..."
+
+          LAST_TAG=$(git tag --sort=-creatordate | head -n 1)
+          echo "🕓 Latest tag: $LAST_TAG"
 
           if [ -z "$LAST_TAG" ]; then
-            echo "⚠️ No LastCommit tag found. Using last 10 commits."
+            echo "No tag found. Falling back to last 10 commits."
             git diff --name-status $(git rev-list --max-count=10 HEAD) | grep '\.sql$' || true > raw_sql_changes.txt
           else
-            echo "📦 Latest tag: $LAST_TAG"
             git diff --name-status "$LAST_TAG"..HEAD | grep '\.sql$' || true > raw_sql_changes.txt
           fi
 
@@ -44,40 +47,34 @@ jobs:
           cat sql_files.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Debug detected SQL files
+      - name: Debug detected files
         run: |
-          echo "✅ Final .sql files found:"
-          cat sql_files.txt || echo "❌ No SQL files detected."
+          echo "🧾 SQL files detected:"
+          cat sql_files.txt || echo "❌ None found"
 
-      - name: Create release notes file
+      - name: Create release notes
         run: |
-          echo "Modified SQL Files:" > release_notes.md
+          echo "📝 Modified SQL Files:" > release_notes.md
           cat sql_files.txt | while read file; do
             echo "- $file" >> release_notes.md
           done
 
-      - name: Create GitHub Release via API (no new tag)
+      - name: Create GitHub Draft Release (no tag)
         env:
           GH_TOKEN: ${{ secrets.HUB_TOKEN }}
         run: |
           TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-          TAG_NAME="LastCommit-nightly-${TIMESTAMP//[: ]/-}"
-          ESCAPED_BODY=$(cat release_notes.md | sed 's/"/\\"/g')
-        
-          cat <<EOF > payload.json
-          {
-          "tag_name": "$TAG_NAME",
-          "name": "Nightly SQL Release - $TIMESTAMP",
-          "body": "$ESCAPED_BODY",
-          "draft": true,
-          "prerelease": false,
-          "target_commitish": "${{ github.ref_name }}"
-          }
-          EOF
-        
           curl -X POST \
             -H "Authorization: token $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             https://api.github.com/repos/${{ github.repository }}/releases \
-            -d @payload.json
-        
+            -d @- <<EOF
+          {
+            "tag_name": "nightly-placeholder",
+            "name": "Nightly SQL Release - $TIMESTAMP",
+            "body": "$(cat release_notes.md)",
+            "draft": true,
+            "prerelease": false,
+            "target_commitish": "ci-sql-release"
+          }
+          EOF
