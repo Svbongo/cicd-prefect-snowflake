@@ -3,7 +3,7 @@ import argparse
 import snowflake.connector
 from prefect import flow, task
 
-ORDER = ["Tables", "Procedures", "Views", "Triggers"]
+ORDER = ["Tables", "Views", "Procedures", "Triggers"]
 
 # 🔁 Previously in utils.snowflake_utils
 def execute_sql_file(file_path):
