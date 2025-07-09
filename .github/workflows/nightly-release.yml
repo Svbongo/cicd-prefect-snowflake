@@ -1,9 +1,9 @@
 name: Nightly SQL Draft Release
 
 on:
-  workflow_dispatch:        # Manual trigger option
+  workflow_dispatch:
   schedule:
-    - cron: '0 6 * * *'     # Runs daily at 2 AM EST (6 AM UTC)
+    - cron: '0 6 * * *'  # 2AM EST (6AM UTC)
 
 permissions:
   contents: write
@@ -16,7 +16,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # Ensure full history + tags are fetched
+          fetch-depth: 0
           ref: cicd-sql-release
 
       - name: Set up Git
@@ -31,20 +31,22 @@ jobs:
 
       - name: Detect modified SQL files since last tag
         id: detect_sqls
+        shell: bash
         run: |
+          set -eo pipefail
           echo "🔍 Finding modified .sql files since last tag..."
 
           LAST_TAG=$(git tag --sort=-creatordate | head -n 1)
           echo "🕓 Latest tag: $LAST_TAG"
 
           if [ -z "$LAST_TAG" ]; then
-            echo "No tag found. Falling back to last 10 commits."
-            git diff --name-status $(git rev-list --max-count=10 HEAD) | grep '\.sql$' || true > raw_sql_changes.txt
+            echo "⚠️ No tag found. Falling back to last 10 commits."
+            git diff --name-status $(git rev-list --max-count=10 HEAD) > raw_sql_changes.txt || true
           else
-            git diff --name-status "$LAST_TAG"..HEAD | grep '\.sql$' || true > raw_sql_changes.txt
+            git diff --name-status "$LAST_TAG"..HEAD > raw_sql_changes.txt || true
           fi
 
-          awk '$1 == "A" || $1 == "M" || $1 == "R100" { print $2 }' raw_sql_changes.txt > sql_files.txt
+          awk '$1 ~ /^(A|M|R100)$/ && $2 ~ /\.sql$/ { print $2 }' raw_sql_changes.txt > sql_files.txt
 
           echo "sql_files<<EOF" >> $GITHUB_OUTPUT
           cat sql_files.txt >> $GITHUB_OUTPUT
@@ -58,13 +60,18 @@ jobs:
       - name: Create release notes
         run: |
           echo "📝 Modified SQL Files:" > release_notes.md
-          cat sql_files.txt | while read file; do
-            echo "- $file" >> release_notes.md
-          done
+          if [ -s sql_files.txt ]; then
+            cat sql_files.txt | while read file; do
+              echo "- $file" >> release_notes.md
+            done
+          else
+            echo "- No SQL files found" >> release_notes.md
+          fi
 
       - name: Create GitHub Draft Release (no tag)
         env:
           GH_TOKEN: ${{ secrets.HUB_TOKEN }}
+        shell: bash
         run: |
           TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
           curl -X POST \
@@ -78,6 +85,6 @@ jobs:
             "body": "$(cat release_notes.md)",
             "draft": true,
             "prerelease": false,
-            "target_commitish": "ci-sql-release"
+            "target_commitish": "cicd-sql-release"
           }
           EOF
