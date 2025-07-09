@@ -16,63 +16,33 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Set up Git
-      run: |
-        git config --global user.name "GitHub Action"
-        git config --global user.email "action@github.com"
-
     - name: Install GitHub CLI
       run: |
         sudo apt update
         sudo apt install gh -y
 
-    - name: Get latest tag
-      id: get_tag
+    - name: Detect new/modified .sql files
       run: |
         git fetch --tags
-        LATEST_TAG=$(git describe --tags --abbrev=0 || echo '')
-        echo "Using tag: $LATEST_TAG"
-        echo "LATEST_TAG=$LATEST_TAG" >> $GITHUB_ENV
-
-    - name: Find modified SQL files
-      id: get_sqls
-      run: |
-        echo "🧠 Detecting changed .sql files since tag: $LATEST_TAG"
-
-        if [ -z "$LATEST_TAG" ]; then
-          echo "No tag found, using all SQL files."
-          git ls-files '*.sql' > sql_files.txt
-        else
-          git diff --name-status "$LATEST_TAG"..HEAD | grep '\.sql$' || true > raw_sql_changes.txt
-          awk '$1 == "A" || $1 == "M" || $1 == "R100" { print $2 }' raw_sql_changes.txt > sql_files.txt
-        fi
-
-        cat sql_files.txt || echo "No SQL files detected"
-        echo "sql_files<<EOF" >> $GITHUB_OUTPUT
-        cat sql_files.txt >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
-
-    - name: Create release notes file
-      run: |
         echo "Modified SQL Files:" > release_notes.md
-        cat sql_files.txt | while read file; do
-          echo "- $file" >> release_notes.md
-        done
+        git diff --name-only HEAD~10 | grep '\.sql$' >> release_notes.md || echo "No changes."
 
-    - name: Create or update release notes for tag
+    - name: Create GitHub Release without a tag (via API)
       env:
         GH_TOKEN: ${{ secrets.HUB_TOKEN }}
       run: |
-        if gh release view "$LATEST_TAG" >/dev/null 2>&1; then
-          echo "📄 Release exists. Updating notes..."
-          gh release edit "$LATEST_TAG" --notes-file release_notes.md --draft
-        else
-          echo "🚀 Creating new draft release for $LATEST_TAG"
-          gh release create "$LATEST_TAG" --notes-file release_notes.md --draft --target main
-        fi
-      
+        TIMESTAMP=$(date +'%Y-%m-%d %H:%M:%S')
+        BODY=$(cat release_notes.md | jq -Rs .)
+        curl -X POST https://api.github.com/repos/${{ github.repository }}/releases \
+          -H "Authorization: token $GH_TOKEN" \
+          -H "Accept: application/vnd.github+json" \
+          -d "{
+            \"tag_name\": \"nightly-placeholder\",
+            \"target_commitish\": \"main\",
+            \"name\": \"Nightly Release $TIMESTAMP\",
+            \"body\": $BODY,
+            \"draft\": false,
+            \"prerelease\": false
+          }"
+  
 
-    - name: Debug SQL files
-      run: |
-        echo "Detected SQL files:"
-        cat sql_files.txt
