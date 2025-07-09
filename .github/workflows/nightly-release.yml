@@ -29,32 +29,33 @@ jobs:
           sudo apt update
           sudo apt install gh -y
 
-      - name: Detect modified SQL files vs main branch
+      - name: Detect modified SQL files since last tag
         id: detect_sqls
         run: |
           set -eo pipefail
-          echo "🔍 Finding modified .sql files vs main branch..."
+          echo "🧠 Detecting new/modified .sql files..."
   
-          BASE_BRANCH="origin/main"
-          git fetch origin main
+          LAST_TAG=$(git tag --sort=-creatordate | head -n 1)
+          echo "🕓 Latest tag: $LAST_TAG"
   
-          git diff --name-status "$BASE_BRANCH"...HEAD > raw_diff.txt
+          git diff --name-status "$LAST_TAG"..HEAD > raw_diff.txt
   
-          echo "🔎 Raw diff content:"
+          echo "📄 Raw diff content:"
           cat raw_diff.txt
   
-          grep '\.sql$' raw_diff.txt > raw_sql_changes.txt || true
+          # Filter only .sql additions/modifications/renames
+          grep '\.sql$' raw_diff.txt | awk '$1 ~ /^(A|M|R100)$/' > raw_sql_changes.txt || touch raw_sql_changes.txt
   
-          echo "📄 Filtered SQL diff:"
-          cat raw_sql_changes.txt
+          echo "📂 Filtered .sql changes:"
+          cat raw_sql_changes.txt || echo "❌ No matching .sql changes"
   
-          awk '$1 ~ /^(A|M|R100)$/ { print $2 }' raw_sql_changes.txt > sql_files.txt
+          # Extract paths only
+          awk '{ print $2 }' raw_sql_changes.txt > sql_files.txt || touch sql_files.txt
   
           echo "sql_files<<EOF" >> $GITHUB_OUTPUT
           cat sql_files.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
   
-        
 
       - name: Debug detected files
         run: |
