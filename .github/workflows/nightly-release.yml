@@ -15,26 +15,23 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # 👈 ensures full tag history
 
       - name: Set up Git
         run: |
           git config --global user.name "GitHub Action"
           git config --global user.email "action@github.com"
 
-      - name: Install GitHub CLI
-        run: |
-          sudo apt update
-          sudo apt install gh -y
-
       - name: Detect new/modified .sql files
         id: get_sqls
         run: |
           echo "🧠 Detecting new/modified .sql files..."
 
-          LAST_TAG=$(git tag --sort=-creatordate | head -n 1)
+          LAST_TAG=$(git tag --sort=-creatordate | grep "^LastCommit-" | head -n 1)
 
           if [ -z "$LAST_TAG" ]; then
-            echo "⚠️ No tag found. Using last 10 commits."
+            echo "⚠️ No LastCommit tag found. Using last 10 commits."
             git diff --name-status $(git rev-list --max-count=10 HEAD) | grep '\.sql$' || true > raw_sql_changes.txt
           else
             echo "📦 Latest tag: $LAST_TAG"
@@ -59,22 +56,28 @@ jobs:
             echo "- $file" >> release_notes.md
           done
 
-      - name: Create GitHub Release without a tag (via API)
+      - name: Create GitHub Release via API (no new tag)
         env:
           GH_TOKEN: ${{ secrets.HUB_TOKEN }}
         run: |
           TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+          TAG_NAME="LastCommit-nightly-${TIMESTAMP//[: ]/-}"
+          ESCAPED_BODY=$(cat release_notes.md | sed 's/"/\\"/g')
+        
+          cat <<EOF > payload.json
+          {
+          "tag_name": "$TAG_NAME",
+          "name": "Nightly SQL Release - $TIMESTAMP",
+          "body": "$ESCAPED_BODY",
+          "draft": true,
+          "prerelease": false,
+          "target_commitish": "${{ github.ref_name }}"
+          }
+          EOF
+        
           curl -X POST \
             -H "Authorization: token $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             https://api.github.com/repos/${{ github.repository }}/releases \
-            -d @- <<EOF
-          {
-            "tag_name": "nightly-placeholder",
-            "name": "Nightly SQL Release - $TIMESTAMP",
-            "body": "$(cat release_notes.md)",
-            "draft": true,
-            "prerelease": false,
-            "target_commitish": "${{ github.ref_name }}"
-          }
-
+            -d @payload.json
+        
