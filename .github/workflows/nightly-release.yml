@@ -31,26 +31,35 @@ jobs:
 
       - name: Detect modified SQL files since last tag
         id: detect_sqls
-        shell: bash
         run: |
           set -eo pipefail
           echo "🔍 Finding modified .sql files since last tag..."
-
+        
           LAST_TAG=$(git tag --sort=-creatordate | head -n 1)
           echo "🕓 Latest tag: $LAST_TAG"
-
+        
           if [ -z "$LAST_TAG" ]; then
             echo "⚠️ No tag found. Falling back to last 10 commits."
-            git diff --name-status $(git rev-list --max-count=10 HEAD) > raw_sql_changes.txt || true
+            git diff --name-status $(git rev-list --max-count=10 HEAD) > raw_diff.txt
           else
-            git diff --name-status "$LAST_TAG"..HEAD > raw_sql_changes.txt || true
+            git diff --name-status "$LAST_TAG"..HEAD > raw_diff.txt
           fi
-
-          awk '$1 ~ /^(A|M|R100)$/ && $2 ~ /\.sql$/ { print $2 }' raw_sql_changes.txt > sql_files.txt
-
+        
+          echo "🔎 Raw diff content:"
+          cat raw_diff.txt
+        
+          # Filter SQL files
+          grep '\.sql$' raw_diff.txt > raw_sql_changes.txt || true
+        
+          echo "📄 Filtered SQL diff:"
+          cat raw_sql_changes.txt
+        
+          awk '$1 ~ /^(A|M|R100)$/ { print $2 }' raw_sql_changes.txt > sql_files.txt
+        
           echo "sql_files<<EOF" >> $GITHUB_OUTPUT
           cat sql_files.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+        
 
       - name: Debug detected files
         run: |
