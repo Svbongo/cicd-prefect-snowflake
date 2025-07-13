@@ -80,9 +80,20 @@ jobs:
         continue-on-error: true
         run: |
           echo "🗑️ Deleting existing nightly release and tag if present..."
-          gh release delete nightly-placeholder --yes || true
+
+          # Get release ID for nightly-placeholder if it exists
+          RELEASE_ID=$(gh api repos/${{ github.repository }}/releases/tags/nightly-placeholder --jq '.id' || echo "")
+
+          # If release exists, delete it
+          if [ -n "$RELEASE_ID" ]; then
+            echo "🔗 Deleting release ID: $RELEASE_ID"
+            gh api --method DELETE repos/${{ github.repository }}/releases/$RELEASE_ID
+          fi
+
+          # Delete tag locally and remotely
           git tag -d nightly-placeholder || true
-          git push origin :refs/tags/nightly-placeholder || true
+          git push --delete origin nightly-placeholder || true
+
 
       - name: Create new nightly release (not draft, marked as latest)
         run: |
