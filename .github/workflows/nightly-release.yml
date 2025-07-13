@@ -33,8 +33,22 @@ jobs:
         run: |
           set -eo pipefail
           echo "🧠 Detecting new/modified .sql files between main and cicd-sql-release HEAD..."
-
-          # Use last tag if it exists, fallback to main branch diff
+  
+          # Fetch tags for reference points
+          LATEST_TAG_MAIN=$(git tag --sort=-creatordate --merged origin/main | head -n1 || echo "No tag on main")
+          LATEST_TAG_CURRENT=$(git tag --sort=-creatordate --merged HEAD | head -n1 || echo "No tag on cicd-sql-release")
+  
+          MAIN_COMMIT=$(git rev-parse origin/main)
+          CURRENT_COMMIT=$(git rev-parse HEAD)
+  
+          echo "🔖 Comparison Context:"
+          echo "Main branch latest tag:     $LATEST_TAG_MAIN"
+          echo "cicd-sql-release latest tag: $LATEST_TAG_CURRENT"
+          echo "Main branch commit SHA:     $MAIN_COMMIT"
+          echo "cicd-sql-release HEAD SHA:  $CURRENT_COMMIT"
+          echo ""
+  
+          # Use last tag if exists, fallback to commit diff
           if git rev-parse nightly-placeholder >/dev/null 2>&1; then
             echo "🔖 Using tag nightly-placeholder for diff"
             git diff --name-status nightly-placeholder..origin/main > raw_diff.txt
@@ -42,17 +56,20 @@ jobs:
             echo "⚠️ No nightly-placeholder tag found. Diffing HEAD of cicd-sql-release with main"
             git diff --name-status origin/main...HEAD > raw_diff.txt
           fi
-
+  
           echo "📄 Raw diff content:"
           cat raw_diff.txt
-
+  
+          # Filter SQL files
           grep '\.sql$' raw_diff.txt | awk '$1 ~ /^(A|M|R100)$/ { print $2 }' > raw_sql_changes.txt || touch raw_sql_changes.txt
-
+  
           echo "📁 Filtered .sql changes:"
           cat raw_sql_changes.txt || echo "❌ No matching .sql changes"
-
+  
+          # Extract paths
           awk '{ print $1 }' raw_sql_changes.txt > sql_files.txt || touch sql_files.txt
-
+  
+          # Pass as output
           echo "sql_files<<EOF" >> $GITHUB_OUTPUT
           cat sql_files.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
