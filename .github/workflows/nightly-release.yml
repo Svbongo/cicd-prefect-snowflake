@@ -73,12 +73,11 @@ jobs:
             echo "- No SQL files found" >> release_notes.md
           fi
 
-      - name: Delete existing nightly release if exists
-        continue-on-error: true
+      - name: Delete existing nightly release and tag if exists
         run: |
+          echo "🗑️ Deleting existing nightly release and tag if present..."
           gh release delete nightly-placeholder --yes || true
-          git tag -d nightly-placeholder || true
-          git push origin :refs/tags/nightly-placeholder || true
+          git push --delete origin nightly-placeholder || true
 
       - name: Create new nightly draft release (with tag)
         run: |
