@@ -9,50 +9,53 @@ permissions:
   contents: write
 
 jobs:
-  create-draft-release:
+  nightly-sql-release:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout cicd-sql-release branch
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
           ref: cicd-sql-release
 
-      - name: Set up Git
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "action@github.com"
-
-      - name: Install GitHub CLI
+      - name: Set up GitHub CLI
         run: |
           sudo apt update
           sudo apt install gh -y
 
-      - name: Detect modified SQL files since main
+      - name: Fetch main branch
+        run: |
+          git fetch origin main:main
+
+      - name: Detect modified SQL files between main and cicd-sql-release HEAD
         id: detect_sqls
         run: |
           set -eo pipefail
-          echo "🧠 Detecting new/modified .sql files between main and HEAD..."
-        
-          git fetch origin main:main  # Ensure main branch is locally available
-          git diff --name-status origin/main...HEAD > raw_diff.txt
-        
+          echo "🧠 Detecting new/modified .sql files between main and cicd-sql-release HEAD..."
+
+          # Use last tag if it exists, fallback to main branch diff
+          if git rev-parse nightly-placeholder >/dev/null 2>&1; then
+            echo "🔖 Using tag nightly-placeholder for diff"
+            git diff --name-status nightly-placeholder..origin/main > raw_diff.txt
+          else
+            echo "⚠️ No nightly-placeholder tag found. Diffing HEAD of cicd-sql-release with main"
+            git diff --name-status origin/main...HEAD > raw_diff.txt
+          fi
+
           echo "📄 Raw diff content:"
           cat raw_diff.txt
-        
+
           grep '\.sql$' raw_diff.txt | awk '$1 ~ /^(A|M|R100)$/ { print $2 }' > raw_sql_changes.txt || touch raw_sql_changes.txt
-        
+
           echo "📁 Filtered .sql changes:"
           cat raw_sql_changes.txt || echo "❌ No matching .sql changes"
-        
+
           awk '{ print $1 }' raw_sql_changes.txt > sql_files.txt || touch sql_files.txt
-        
+
           echo "sql_files<<EOF" >> $GITHUB_OUTPUT
           cat sql_files.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-        
-
 
       - name: Debug detected files
         run: |
@@ -70,23 +73,19 @@ jobs:
             echo "- No SQL files found" >> release_notes.md
           fi
 
-      - name: Create GitHub Draft Release (no tag)
+      - name: Delete existing nightly release if exists
+        continue-on-error: true
+        run: |
+          gh release delete nightly-placeholder --yes || true
+          git tag -d nightly-placeholder || true
+          git push origin :refs/tags/nightly-placeholder || true
+
+      - name: Create new nightly draft release (with tag)
+        run: |
+          gh release create nightly-placeholder \
+            --title "Nightly SQL Release - $(date '+%Y-%m-%d %H:%M:%S')" \
+            --notes-file release_notes.md \
+            --target cicd-sql-release \
+
         env:
           GH_TOKEN: ${{ secrets.HUB_TOKEN }}
-        shell: bash
-        run: |
-          TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-          curl -X POST \
-            -H "Authorization: token $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/${{ github.repository }}/releases \
-            -d @- <<EOF
-          {
-            "tag_name": "nightly-placeholder",
-            "name": "Nightly SQL Release - $TIMESTAMP",
-            "body": "$(cat release_notes.md)",
-            "draft": false,
-            "prerelease": false,
-            "target_commitish": "cicd-sql-release"
-          }
-          EOF
