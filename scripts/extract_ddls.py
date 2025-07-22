@@ -1,81 +1,135 @@
-import os
 import snowflake.connector
-from dotenv import load_dotenv
+import os
+import subprocess
 
-# Load credentials
-load_dotenv()
+# Load environment variables
+SNOWFLAKE_ACCOUNT = os.getenv("SNOWFLAKE_ACCOUNT")
+SNOWFLAKE_USER = os.getenv("SNOWFLAKE_USER")
+SNOWFLAKE_PASSWORD = os.getenv("SNOWFLAKE_PASSWORD")
+SNOWFLAKE_DATABASE = os.getenv("SNOWFLAKE_DATABASE")
+SNOWFLAKE_WAREHOUSE = os.getenv("SNOWFLAKE_WAREHOUSE")
+HUB_TOKEN = os.getenv("HUB_TOKEN")
+GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY")
 
-# Connect to Snowflake
-conn = snowflake.connector.connect(
-    user=os.getenv("SNOWFLAKE_USER"),
-    password=os.getenv("SNOWFLAKE_PASSWORD"),
-    account=os.getenv("SNOWFLAKE_ACCOUNT"),
-    warehouse=os.getenv("SNOWFLAKE_WAREHOUSE"),
-    database=os.getenv("SNOWFLAKE_DATABASE"),
-    schema=None,
-    role=os.getenv("SNOWFLAKE_ROLE")
-)
+output_base = './Snowflake/' + SNOWFLAKE_DATABASE
 
-cur = conn.cursor()
+object_types = {
+    'TABLE': 'Tables',
+    'VIEW': 'Views',
+    'PROCEDURE': 'Procedures'
+}
 
-# Output folder for DDLs
-OUTPUT_FOLDER = "extracted_ddls"
-os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+def export_table(cursor, database, schema, table, output_path):
+    cursor.execute(f"SELECT GET_DDL('TABLE', '{database}.{schema}.{table}')")
+    ddl = cursor.fetchone()[0]
 
-def export_ddl(object_type, database, schema, name, ddl_sql):
+    cursor.execute(f"SELECT * FROM {database}.{schema}.{table}")
+    rows = cursor.fetchall()
+    columns = [desc[0] for desc in cursor.description]
+
+    insert_statements = []
+    for row in rows:
+        values = []
+        for val in row:
+            if val is None:
+                values.append("NULL")
+            elif isinstance(val, str):
+                escaped_val = val.replace("'", "''")
+                values.append(f"'{escaped_val}'")
+            else:
+                values.append(str(val))
+        insert_stmt = f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({', '.join(values)});"
+        insert_statements.append(insert_stmt)
+
+    with open(output_path, 'w') as f:
+        f.write(ddl + ';\n\n')
+        for stmt in insert_statements:
+            f.write(stmt + '\n')
+
+def export_object(cursor, object_type, full_name, output_path):
+    cursor.execute(f"SELECT GET_DDL('{object_type}', '{full_name}')")
+    ddl = cursor.fetchone()[0]
+    with open(output_path, 'w') as f:
+        f.write(ddl + ';\n')
+
+def git_push(commit_message="Auto-sync: Snowflake DDLs and Data"):
     try:
-        cur.execute(ddl_sql)
-        result = cur.fetchone()
-        if result:
-            ddl_text = result[0]
-            filename = f"{object_type.lower()}__{database}__{schema}__{name}.sql"
-            filepath = os.path.join(OUTPUT_FOLDER, filename)
-            with open(filepath, "w") as f:
-                f.write(ddl_text)
-            print(f"📄 Exported {object_type}: {name}")
-        else:
-            print(f"⚠️ No DDL found for {object_type}: {name}")
-    except Exception as e:
-        print(f"❌ Failed to export {object_type} {name}: {e}")
+        subprocess.run(["git", "add", "."], check=True)
+        subprocess.run(["git", "commit", "-m", commit_message], check=True)
+        subprocess.run(["git", "remote", "remove", "origin"], check=True)
+        remote_url = f"https://x-access-token:{HUB_TOKEN}@github.com/{GITHUB_REPOSITORY}.git"
+        subprocess.run(["git", "remote", "add", "origin", remote_url], check=True)
+        subprocess.run(["git", "config", "--local", "--unset-all", "http.https://github.com/.extraheader"], check=True)
+        subprocess.run(["git", "push", "origin", "main"], check=True)
+        print("✅ Changes pushed to main branch.")
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Git operation failed: {e}")
 
-def extract_objects():
-    cur.execute("SHOW SCHEMAS IN DATABASE DEMO_DB")
-    schemas = cur.fetchall()
+def extract_all():
+    conn = snowflake.connector.connect(
+        user=SNOWFLAKE_USER,
+        password=SNOWFLAKE_PASSWORD,
+        account=SNOWFLAKE_ACCOUNT,
+        database=SNOWFLAKE_DATABASE,
+        warehouse=SNOWFLAKE_WAREHOUSE
+    )
+    cursor = conn.cursor()
 
-    for schema_row in schemas:
-        schema_name = schema_row[1]
-        print(f"\n🔍 Processing schema: {schema_name}")
+    cursor.execute(f"SHOW SCHEMAS IN DATABASE {SNOWFLAKE_DATABASE}")
+    schemas = [row[1] for row in cursor.fetchall() if row[1].upper() not in ['INFORMATION_SCHEMA', 'PUBLIC', 'STAGING']]
 
-        # Tables
-        cur.execute(f"SHOW TABLES IN DEMO_DB.{schema_name}")
-        tables = cur.fetchall()
-        print(f"📦 Found {len(tables)} TABLE(s) in {schema_name}")
-        for table in tables:
-            table_name = table[1]
-            export_ddl("TABLE", "DEMO_DB", schema_name, table_name,
-                       f"SELECT GET_DDL('TABLE', 'DEMO_DB.{schema_name}.{table_name}')")
+    for schema in schemas:
+        print(f"\n🔍 Processing schema: {schema}")
 
-        # Views
-        cur.execute(f"SHOW VIEWS IN DEMO_DB.{schema_name}")
-        views = cur.fetchall()
-        print(f"📦 Found {len(views)} VIEW(s) in {schema_name}")
-        for view in views:
-            view_name = view[1]
-            export_ddl("VIEW", "DEMO_DB", schema_name, view_name,
-                       f"SELECT GET_DDL('VIEW', 'DEMO_DB.{schema_name}.{view_name}')")
+        schema_base = os.path.join(output_base, schema)
+        for folder in object_types.values():
+            os.makedirs(os.path.join(schema_base, folder), exist_ok=True)
 
-        # Procedures (filtered)
-        cur.execute(f"SHOW PROCEDURES IN SCHEMA DEMO_DB.{schema_name}")
-        procedures = cur.fetchall()
-        print(f"📦 Found {len(procedures)} PROCEDURE(s) in {schema_name}")
-        for proc in procedures:
-            proc_name = proc[1]
-            # Skip system procedures unless needed
-            if proc_name.startswith("SYSTEM$"):
-                continue
-            export_ddl("PROCEDURE", "DEMO_DB", schema_name, proc_name,
-                       f"SELECT GET_DDL('PROCEDURE', 'DEMO_DB.{schema_name}.{proc_name}')")
+        for obj_type, folder in object_types.items():
+            try:
+                cursor.execute(f"SHOW {obj_type}s IN SCHEMA {SNOWFLAKE_DATABASE}.{schema}")
+                objects = cursor.fetchall()
+
+                print(f"📦 Found {len(objects)} {obj_type}(s) in {schema}")
+
+                for obj in objects:
+                    name = obj[1]
+                    output_path = os.path.join(schema_base, folder, f"{name}.sql")
+
+                    if obj_type == 'TABLE':
+                        print(f"📄 Exported TABLE: {name}")
+                        export_table(cursor, SNOWFLAKE_DATABASE, schema, name, output_path)
+
+                    elif obj_type == 'PROCEDURE':
+                        try:
+                            full_name = f"{SNOWFLAKE_DATABASE}.{schema}.{name}"
+                            export_object(cursor, obj_type, full_name, output_path)
+                        except Exception:
+                            # Retry with argument signature if initial GET_DDL fails
+                            arg_signature = obj[8]
+                            full_name = f"{SNOWFLAKE_DATABASE}.{schema}.{name}{arg_signature}"
+                            try:
+                                export_object(cursor, obj_type, full_name, output_path)
+                            except Exception as e:
+                                print(f"❌ Failed to export PROCEDURE {name}: {e}")
+
+
+                    else:  # VIEW
+                        full_name = f"{SNOWFLAKE_DATABASE}.{schema}.{name}"
+                        try:
+                            print(f"📄 Exporting VIEW: {name}")
+                            export_object(cursor, obj_type, full_name, output_path)
+                        except Exception as e:
+                            print(f"❌ Failed to export VIEW {name}: {e}")
+
+            except Exception as e:
+                print(f"⚠️ Skipped {obj_type}s for {schema}: {e}")
+
+    cursor.close()
+    conn.close()
+
+    print("\n✅ DDL + Data extraction complete.")
+    git_push()
 
 if __name__ == "__main__":
-    extract_objects()
-    print("\n✅ DDL extraction complete.")
+    extract_all()
