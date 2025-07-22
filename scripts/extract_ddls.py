@@ -41,16 +41,15 @@ def export_table(cursor, database, schema, table, output_path):
         insert_statements.append(insert_stmt)
 
     with open(output_path, 'w') as f:
-        f.write(f"{ddl};\n")
+        f.write(ddl + ';\n\n')
         for stmt in insert_statements:
             f.write(stmt + '\n')
 
-def export_object(cursor, object_type, database, schema, name, signature, output_path):
-    target = signature if object_type == 'PROCEDURE' else f"{database}.{schema}.{name}"
-    cursor.execute(f"SELECT GET_DDL('{object_type}', '{target}')")
+def export_object(cursor, object_type, full_name, output_path):
+    cursor.execute(f"SELECT GET_DDL('{object_type}', '{full_name}')")
     ddl = cursor.fetchone()[0]
     with open(output_path, 'w') as f:
-        f.write(f"{ddl};\n")
+        f.write(ddl + ';\n')
 
 def git_push(commit_message="Auto-sync: Snowflake DDLs and Data"):
     try:
@@ -73,7 +72,6 @@ def extract_all():
         database=SNOWFLAKE_DATABASE,
         warehouse=SNOWFLAKE_WAREHOUSE
     )
-
     cursor = conn.cursor()
 
     cursor.execute(f"SHOW SCHEMAS IN DATABASE {SNOWFLAKE_DATABASE}")
@@ -81,30 +79,38 @@ def extract_all():
 
     for schema in schemas:
         print(f"🔍 Processing schema: {schema}")
+
         schema_base = os.path.join(output_base, schema)
         for folder in object_types.values():
             os.makedirs(os.path.join(schema_base, folder), exist_ok=True)
 
         for obj_type, folder in object_types.items():
             try:
-                show_cmd = f"SHOW {obj_type}s IN SCHEMA {SNOWFLAKE_DATABASE}.{schema}"
-                cursor.execute(show_cmd)
+                cursor.execute(f"SHOW {obj_type}s IN SCHEMA {SNOWFLAKE_DATABASE}.{schema}")
                 objects = cursor.fetchall()
 
                 for obj in objects:
                     name = obj[1]
-                    signature = obj[3]  # Fully qualified signature for PROCEDUREs
                     output_path = os.path.join(schema_base, folder, f"{name}.sql")
 
                     if obj_type == 'TABLE':
                         export_table(cursor, SNOWFLAKE_DATABASE, schema, name, output_path)
-                    else:
-                        export_object(cursor, obj_type, SNOWFLAKE_DATABASE, schema, name, signature, output_path)
+
+                    elif obj_type == 'PROCEDURE':
+                        arg_signature = obj[3]  # Example: '(VARCHAR, NUMBER)'
+                        full_name = f"{SNOWFLAKE_DATABASE}.{schema}.{name}{arg_signature}"
+                        export_object(cursor, obj_type, full_name, output_path)
+
+                    else:  # VIEW
+                        full_name = f"{SNOWFLAKE_DATABASE}.{schema}.{name}"
+                        export_object(cursor, obj_type, full_name, output_path)
+
             except Exception as e:
                 print(f"⚠️ Skipped {obj_type}s for {schema}: {e}")
 
     cursor.close()
     conn.close()
+
     print("✅ DDL + Data extraction complete.")
     git_push()
 
