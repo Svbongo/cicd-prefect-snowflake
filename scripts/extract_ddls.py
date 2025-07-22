@@ -2,7 +2,7 @@ import snowflake.connector
 import os
 import subprocess
 
-# Configs (Replace with your actual values or set as ENV variables)
+# Configs from environment variables (GitHub secrets or .env)
 SNOWFLAKE_ACCOUNT = os.getenv("SNOWFLAKE_ACCOUNT")
 SNOWFLAKE_USER = os.getenv("SNOWFLAKE_USER")
 SNOWFLAKE_PASSWORD = os.getenv("SNOWFLAKE_PASSWORD")
@@ -14,8 +14,7 @@ output_base = './Snowflake/' + SNOWFLAKE_DATABASE
 object_types = {
     'TABLE': 'Tables',
     'VIEW': 'Views',
-    'PROCEDURE': 'Procedures',
-    'TRIGGER': 'Triggers'
+    'PROCEDURE': 'Procedures'
 }
 
 def git_push(commit_message="Auto-sync: Snowflake DDLs"):
@@ -38,9 +37,9 @@ def extract_ddls():
 
     cursor = conn.cursor()
 
-    # Get all schemas
     cursor.execute(f"SHOW SCHEMAS IN DATABASE {SNOWFLAKE_DATABASE}")
-    schemas = [row[1] for row in cursor.fetchall()]
+    # Exclude system schemas
+    schemas = [row[1] for row in cursor.fetchall() if row[1] not in ['INFORMATION_SCHEMA']]
 
     for schema in schemas:
         schema_base = os.path.join(output_base, schema)
