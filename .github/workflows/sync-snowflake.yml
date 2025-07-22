@@ -36,4 +36,4 @@ jobs:
         HUB_TOKEN: ${{ secrets.HUB_TOKEN }}
         GITHUB_REPOSITORY: ${{ github.repository }}
       run: |
-        python scripts/extract_ddls_and_data.py
+        python scripts/extract_ddls.py
