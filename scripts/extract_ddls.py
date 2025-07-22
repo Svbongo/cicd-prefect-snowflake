@@ -1,96 +1,119 @@
-import os
 import snowflake.connector
+import os
 import subprocess
-from dotenv import load_dotenv
-from datetime import datetime
 
-load_dotenv()
+# Env Variables
+SNOWFLAKE_ACCOUNT = os.getenv("SNOWFLAKE_ACCOUNT")
+SNOWFLAKE_USER = os.getenv("SNOWFLAKE_USER")
+SNOWFLAKE_PASSWORD = os.getenv("SNOWFLAKE_PASSWORD")
+SNOWFLAKE_DATABASE = os.getenv("SNOWFLAKE_DATABASE")
+SNOWFLAKE_WAREHOUSE = os.getenv("SNOWFLAKE_WAREHOUSE")
+HUB_TOKEN = os.getenv("HUB_TOKEN")
+GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY")
 
-# Snowflake connection info
-conn = snowflake.connector.connect(
-    user=os.getenv("SNOWFLAKE_USER"),
-    password=os.getenv("SNOWFLAKE_PASSWORD"),
-    account=os.getenv("SNOWFLAKE_ACCOUNT"),
-    warehouse=os.getenv("SNOWFLAKE_WAREHOUSE"),
-    database=os.getenv("SNOWFLAKE_DATABASE"),
-    role=os.getenv("SNOWFLAKE_ROLE")
-)
+output_base = './output/' + SNOWFLAKE_DATABASE
 
-# Output directory
-OUTPUT_DIR = "output"
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+object_types = {
+    'TABLE': 'Tables',
+    'VIEW': 'Views',
+    'PROCEDURE': 'Procedures'
+}
 
-excluded_schemas = {"INFORMATION_SCHEMA", "PUBLIC", "STAGING"}
+def export_table(cursor, database, schema, table, output_path):
+    cursor.execute(f"SELECT GET_DDL('TABLE', '{database}.{schema}.{table}')")
+    ddl = cursor.fetchone()[0]
 
-cursor = conn.cursor()
-cursor.execute("SHOW SCHEMAS")
-schemas = [row[1] for row in cursor.fetchall() if row[1] not in excluded_schemas]
+    cursor.execute(f"SELECT * FROM {database}.{schema}.{table}")
+    rows = cursor.fetchall()
+    columns = [desc[0] for desc in cursor.description]
 
-for schema in schemas:
-    print(f"\n🔍 Processing schema: {schema}")
-    schema_dir = os.path.join(OUTPUT_DIR, schema)
-    os.makedirs(schema_dir, exist_ok=True)
+    insert_statements = []
+    for row in rows:
+        values = []
+        for val in row:
+            if val is None:
+                values.append("NULL")
+            elif isinstance(val, str):
+                escaped_val = val.replace("'", "''")
+                values.append(f"'{escaped_val}'")
+            else:
+                values.append(str(val))
+        insert_stmt = f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({', '.join(values)});"
+        insert_statements.append(insert_stmt)
 
-    cursor.execute(f"SHOW TABLES IN SCHEMA {schema}")
-    tables = [row[1] for row in cursor.fetchall()]
-    print(f"📦 Found {len(tables)} TABLE(s) in {schema}")
+    with open(output_path, 'w') as f:
+        f.write(f"{ddl};\n\n")
+        for stmt in insert_statements:
+            f.write(stmt + '\n')
 
-    for table in tables:
-        cursor.execute(f"SELECT GET_DDL('TABLE', '{schema}.{table}')")
-        ddl = cursor.fetchone()[0]
-        print(f"📄 Exported TABLE: {table}")
-        with open(os.path.join(schema_dir, f"{table}.sql"), "w") as f:
-            f.write(ddl)
+def export_object(cursor, object_type, full_name, output_path):
+    cursor.execute(f"SELECT GET_DDL('{object_type}', '{full_name}')")
+    ddl = cursor.fetchone()[0]
+    with open(output_path, 'w') as f:
+        f.write(f"{ddl};\n")
 
-    # Views
-    cursor.execute(f"SHOW VIEWS IN SCHEMA {schema}")
-    views = [row[1] for row in cursor.fetchall()]
-    print(f"📦 Found {len(views)} VIEW(s) in {schema}")
-    for view in views:
-        try:
-            cursor.execute(f"SELECT GET_DDL('VIEW', '{schema}.{view}')")
-            ddl = cursor.fetchone()[0]
-            print(f"📄 Exported VIEW: {view}")
-            with open(os.path.join(schema_dir, f"{view}_view.sql"), "w") as f:
-                f.write(ddl)
-        except Exception as e:
-            print(f"❌ Failed to export VIEW {view}: {e}")
+def git_push(commit_message="Auto-sync: Snowflake DDLs and Data"):
+    try:
+        subprocess.run(["git", "add", "."], check=True)
+        subprocess.run(["git", "commit", "-m", commit_message], check=True)
+        remote_url = f"https://x-access-token:{HUB_TOKEN}@github.com/{GITHUB_REPOSITORY}.git"
+        subprocess.run(["git", "remote", "set-url", "origin", remote_url], check=True)
+        subprocess.run(["git", "push", "origin", "main"], check=True)
+        print("\U0001F680 Git commit successful.")
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Git operation failed: {e}")
 
-    # Procedures
-    cursor.execute(f"SHOW PROCEDURES IN SCHEMA {schema}")
-    procedures = cursor.fetchall()
-    print(f"📦 Found {len(procedures)} PROCEDURE(s) in {schema}")
+def extract_all():
+    conn = snowflake.connector.connect(
+        user=SNOWFLAKE_USER,
+        password=SNOWFLAKE_PASSWORD,
+        account=SNOWFLAKE_ACCOUNT,
+        database=SNOWFLAKE_DATABASE,
+        warehouse=SNOWFLAKE_WAREHOUSE
+    )
+    cursor = conn.cursor()
 
-    for proc in procedures:
-        proc_name = proc[1]
-        signature = proc[9]  # Fully qualified signature
+    cursor.execute(f"SHOW SCHEMAS IN DATABASE {SNOWFLAKE_DATABASE}")
+    schemas = [row[1] for row in cursor.fetchall() if row[1].upper() not in ['INFORMATION_SCHEMA', 'STAGING', 'PUBLIC']]
 
-        if proc_name.startswith("SYSTEM$"):
-            continue  # Skip system procedures
+    for schema in schemas:
+        print(f"\n\U0001F50D Processing schema: {schema}")
+        schema_base = os.path.join(output_base, schema)
+        for folder in object_types.values():
+            os.makedirs(os.path.join(schema_base, folder), exist_ok=True)
 
-        try:
-            print(f"📄 Exporting PROCEDURE: {proc_name} (no signature)")
-            cursor.execute(f"SELECT GET_DDL('PROCEDURE', '{schema}.{proc_name}')")
-            ddl = cursor.fetchone()[0]
-        except Exception:
-            try:
-                print(f"🔁 Retrying PROCEDURE with signature: {signature}")
-                cursor.execute(f"SELECT GET_DDL('PROCEDURE', '{schema}.{signature}')")
-                ddl = cursor.fetchone()[0]
-            except Exception as e:
-                print(f"❌ Failed to export PROCEDURE {proc_name}: {e}")
-                continue
+        for obj_type, folder in object_types.items():
+            cursor.execute(f"SHOW {obj_type}s IN SCHEMA {SNOWFLAKE_DATABASE}.{schema}")
+            objects = cursor.fetchall()
+            print(f"\U0001F4E6 Found {len(objects)} {obj_type}(s) in {schema}")
 
-        filename = f"{proc_name}_proc.sql"
-        with open(os.path.join(schema_dir, filename), "w") as f:
-            f.write(ddl)
+            for obj in objects:
+                name = obj[1]
+                output_path = os.path.join(schema_base, folder, f"{name}.sql")
 
-# Git commit
-try:
-    subprocess.run(["git", "add", OUTPUT_DIR], check=True)
-    subprocess.run(["git", "commit", "-m", "Auto-sync: Snowflake DDLs and Data"], check=True)
-    print("🚀 Git commit successful.")
-except subprocess.CalledProcessError:
-    print("ℹ️ No changes to commit.")
+                try:
+                    if obj_type == 'TABLE':
+                        export_table(cursor, SNOWFLAKE_DATABASE, schema, name, output_path)
+                        print(f"\U0001F4C4 Exported TABLE: {name}")
 
-print("\n✅ DDL + Data extraction complete.")
+                    elif obj_type == 'PROCEDURE':
+                        arg_signature = obj[7]  # ARGUMENT_SIGNATURE
+                        full_name = f"{SNOWFLAKE_DATABASE}.{schema}.{name}{arg_signature}"
+                        export_object(cursor, 'PROCEDURE', full_name, output_path)
+                        print(f"\U0001F4C4 Exported PROCEDURE: {name}{arg_signature}")
+
+                    else:  # VIEW
+                        full_name = f"{SNOWFLAKE_DATABASE}.{schema}.{name}"
+                        export_object(cursor, obj_type, full_name, output_path)
+                        print(f"\U0001F4C4 Exported VIEW: {name}")
+
+                except Exception as e:
+                    print(f"❌ Failed to export {obj_type} {name}: {e}")
+
+    cursor.close()
+    conn.close()
+    print("\n✅ DDL + Data extraction complete.")
+    git_push()
+
+if __name__ == "__main__":
+    extract_all()
