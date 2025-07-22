@@ -19,12 +19,21 @@ object_types = {
 
 def git_push(commit_message="Auto-sync: Snowflake DDLs"):
     try:
+        repo_url = os.getenv("GITHUB_REPOSITORY")
+        token = os.getenv("HUB_TOKEN")
+
         subprocess.run(["git", "add", "."], check=True)
         subprocess.run(["git", "commit", "-m", commit_message], check=True)
+
+        remote_url = f"https://x-access-token:{token}@github.com/{repo_url}.git"
+        subprocess.run(["git", "remote", "set-url", "origin", remote_url], check=True)
+
         subprocess.run(["git", "push", "origin", "main"], check=True)
+
         print("✅ Changes pushed to main branch.")
     except subprocess.CalledProcessError as e:
         print(f"❌ Git operation failed: {e}")
+
 
 def extract_ddls():
     conn = snowflake.connector.connect(
