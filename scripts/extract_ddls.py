@@ -2,7 +2,6 @@ import snowflake.connector
 import os
 import subprocess
 
-# Load environment variables
 SNOWFLAKE_ACCOUNT = os.getenv("SNOWFLAKE_ACCOUNT")
 SNOWFLAKE_USER = os.getenv("SNOWFLAKE_USER")
 SNOWFLAKE_PASSWORD = os.getenv("SNOWFLAKE_PASSWORD")
@@ -42,7 +41,7 @@ def export_table(cursor, database, schema, table, output_path):
         insert_statements.append(insert_stmt)
 
     with open(output_path, 'w') as f:
-        f.write(ddl + ';\n\n')
+        f.write(f"{ddl};\n\n")
         for stmt in insert_statements:
             f.write(stmt + '\n')
 
@@ -50,11 +49,11 @@ def export_object(cursor, object_type, full_name, output_path):
     cursor.execute(f"SELECT GET_DDL('{object_type}', '{full_name}')")
     ddl = cursor.fetchone()[0]
     with open(output_path, 'w') as f:
-        f.write(ddl + ';\n')
+        f.write(f"{ddl};\n")
 
 def git_push(commit_message="Auto-sync: Snowflake DDLs and Data"):
     try:
-        subprocess.run(["git", "add", "."], check=True)
+        subprocess.run(["git", "add", "--all"], check=True)
         subprocess.run(["git", "commit", "-m", commit_message], check=True)
         subprocess.run(["git", "remote", "remove", "origin"], check=True)
         remote_url = f"https://x-access-token:{HUB_TOKEN}@github.com/{GITHUB_REPOSITORY}.git"
@@ -80,7 +79,6 @@ def extract_all():
 
     for schema in schemas:
         print(f"\n🔍 Processing schema: {schema}")
-
         schema_base = os.path.join(output_base, schema)
         for folder in object_types.values():
             os.makedirs(os.path.join(schema_base, folder), exist_ok=True)
@@ -101,23 +99,23 @@ def extract_all():
                         export_table(cursor, SNOWFLAKE_DATABASE, schema, name, output_path)
 
                     elif obj_type == 'PROCEDURE':
+                        signature = obj[8]  # full signature with argument types
                         try:
+                            print(f"📄 Exporting PROCEDURE: {name} (no signature)")
                             full_name = f"{SNOWFLAKE_DATABASE}.{schema}.{name}"
                             export_object(cursor, obj_type, full_name, output_path)
                         except Exception:
-                            # Retry with argument signature if initial GET_DDL fails
-                            arg_signature = obj[8]
-                            full_name = f"{SNOWFLAKE_DATABASE}.{schema}.{name}{arg_signature}"
                             try:
+                                print(f"🔁 Retrying PROCEDURE with signature: {name}{signature}")
+                                full_name = f"{SNOWFLAKE_DATABASE}.{schema}.{name}{signature}"
                                 export_object(cursor, obj_type, full_name, output_path)
                             except Exception as e:
                                 print(f"❌ Failed to export PROCEDURE {name}: {e}")
 
-
-                    else:  # VIEW
-                        full_name = f"{SNOWFLAKE_DATABASE}.{schema}.{name}"
+                    elif obj_type == 'VIEW':
                         try:
                             print(f"📄 Exporting VIEW: {name}")
+                            full_name = f"{SNOWFLAKE_DATABASE}.{schema}.{name}"
                             export_object(cursor, obj_type, full_name, output_path)
                         except Exception as e:
                             print(f"❌ Failed to export VIEW {name}: {e}")
