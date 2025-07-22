@@ -54,10 +54,14 @@ def export_object(cursor, object_type, full_name, output_path):
     with open(output_path, 'w') as f:
         f.write(ddl + ';\n')
 
-# Git push function
 def git_push(commit_message="Auto-sync: Snowflake DDLs and Data"):
     try:
         subprocess.run(["git", "add", "."], check=True)
+        result = subprocess.run(["git", "diff", "--cached", "--quiet"])
+        if result.returncode == 0:
+            print("ℹ️ No changes to commit.")
+            return
+
         subprocess.run(["git", "commit", "-m", commit_message], check=True)
         subprocess.run(["git", "remote", "remove", "origin"], check=True)
         remote_url = f"https://x-access-token:{HUB_TOKEN}@github.com/{GITHUB_REPOSITORY}.git"
@@ -67,6 +71,7 @@ def git_push(commit_message="Auto-sync: Snowflake DDLs and Data"):
         print("✅ Changes pushed to main branch.")
     except subprocess.CalledProcessError as e:
         print(f"❌ Git operation failed: {e}")
+
 
 # Extract all schemas and objects
 def extract_all():
@@ -105,12 +110,14 @@ def extract_all():
                         export_table(cursor, SNOWFLAKE_DATABASE, schema, name, output_path)
 
                     elif obj_type == 'PROCEDURE':
-                        # PROCEDURE arg signature is usually at index 7, verify with print(obj)
-                        arg_signature = obj[7] if len(obj) > 7 else ''
-                        full_name = f"{SNOWFLAKE_DATABASE}.{schema}.{name}{arg_signature}"
-                        export_object(cursor, obj_type, full_name, output_path)
+                        full_signature = obj[8]  # Includes full procedure name and signature
+                        full_name = f"{SNOWFLAKE_DATABASE}.{schema}.{full_signature}"
+                        try:
+                            export_object(cursor, obj_type, full_name, output_path)
+                        except Exception as ex:
+                            print(f"⚠️ Failed to export procedure {full_signature}: {ex}")
 
-                    else:  # VIEW
+                    elif obj_type == 'VIEW':
                         full_name = f"{SNOWFLAKE_DATABASE}.{schema}.{name}"
                         export_object(cursor, obj_type, full_name, output_path)
 
