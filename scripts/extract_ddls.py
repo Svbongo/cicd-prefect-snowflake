@@ -2,6 +2,7 @@ import snowflake.connector
 import os
 import subprocess
 
+# Load environment variables
 SNOWFLAKE_ACCOUNT = os.getenv("SNOWFLAKE_ACCOUNT")
 SNOWFLAKE_USER = os.getenv("SNOWFLAKE_USER")
 SNOWFLAKE_PASSWORD = os.getenv("SNOWFLAKE_PASSWORD")
@@ -18,6 +19,7 @@ object_types = {
     'PROCEDURE': 'Procedures'
 }
 
+# Export TABLE: DDL + INSERTS
 def export_table(cursor, database, schema, table, output_path):
     cursor.execute(f"SELECT GET_DDL('TABLE', '{database}.{schema}.{table}')")
     ddl = cursor.fetchone()[0]
@@ -45,12 +47,14 @@ def export_table(cursor, database, schema, table, output_path):
         for stmt in insert_statements:
             f.write(stmt + '\n')
 
+# Export VIEW or PROCEDURE: Only DDL
 def export_object(cursor, object_type, full_name, output_path):
     cursor.execute(f"SELECT GET_DDL('{object_type}', '{full_name}')")
     ddl = cursor.fetchone()[0]
     with open(output_path, 'w') as f:
         f.write(ddl + ';\n')
 
+# Git push function
 def git_push(commit_message="Auto-sync: Snowflake DDLs and Data"):
     try:
         subprocess.run(["git", "add", "."], check=True)
@@ -64,6 +68,7 @@ def git_push(commit_message="Auto-sync: Snowflake DDLs and Data"):
     except subprocess.CalledProcessError as e:
         print(f"❌ Git operation failed: {e}")
 
+# Extract all schemas and objects
 def extract_all():
     conn = snowflake.connector.connect(
         user=SNOWFLAKE_USER,
@@ -78,9 +83,9 @@ def extract_all():
     schemas = [row[1] for row in cursor.fetchall() if row[1] not in ['INFORMATION_SCHEMA']]
 
     for schema in schemas:
-        print(f"🔍 Processing schema: {schema}")
-
+        print(f"\n🔍 Processing schema: {schema}")
         schema_base = os.path.join(output_base, schema)
+
         for folder in object_types.values():
             os.makedirs(os.path.join(schema_base, folder), exist_ok=True)
 
@@ -88,16 +93,20 @@ def extract_all():
             try:
                 cursor.execute(f"SHOW {obj_type}s IN SCHEMA {SNOWFLAKE_DATABASE}.{schema}")
                 objects = cursor.fetchall()
+                print(f"📦 Found {len(objects)} {obj_type}(s) in {schema}")
 
                 for obj in objects:
                     name = obj[1]
+                    print(f"📄 Exporting {obj_type}: {name}")
+
                     output_path = os.path.join(schema_base, folder, f"{name}.sql")
 
                     if obj_type == 'TABLE':
                         export_table(cursor, SNOWFLAKE_DATABASE, schema, name, output_path)
 
                     elif obj_type == 'PROCEDURE':
-                        arg_signature = obj[3]  # Example: '(VARCHAR, NUMBER)'
+                        # PROCEDURE arg signature is usually at index 7, verify with print(obj)
+                        arg_signature = obj[7] if len(obj) > 7 else ''
                         full_name = f"{SNOWFLAKE_DATABASE}.{schema}.{name}{arg_signature}"
                         export_object(cursor, obj_type, full_name, output_path)
 
@@ -110,8 +119,8 @@ def extract_all():
 
     cursor.close()
     conn.close()
-
-    print("✅ DDL + Data extraction complete.")
+    print("\n✅ DDL + Data extraction complete.")
+    print("🔍 Procedure object sample:", obj)
     git_push()
 
 if __name__ == "__main__":
