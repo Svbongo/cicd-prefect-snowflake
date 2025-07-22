@@ -1,119 +1,83 @@
 import snowflake.connector
 import os
-import subprocess
+from pathlib import Path
 
-# Env Variables
-SNOWFLAKE_ACCOUNT = os.getenv("SNOWFLAKE_ACCOUNT")
-SNOWFLAKE_USER = os.getenv("SNOWFLAKE_USER")
-SNOWFLAKE_PASSWORD = os.getenv("SNOWFLAKE_PASSWORD")
-SNOWFLAKE_DATABASE = os.getenv("SNOWFLAKE_DATABASE")
-SNOWFLAKE_WAREHOUSE = os.getenv("SNOWFLAKE_WAREHOUSE")
-HUB_TOKEN = os.getenv("HUB_TOKEN")
-GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY")
+# Connect to Snowflake
+conn = snowflake.connector.connect(
+    user=os.getenv("SNOWFLAKE_USER"),
+    password=os.getenv("SNOWFLAKE_PASSWORD"),
+    account=os.getenv("SNOWFLAKE_ACCOUNT"),
+    warehouse=os.getenv("SNOWFLAKE_WAREHOUSE"),
+    database=os.getenv("SNOWFLAKE_DATABASE"),
+    schema="INFORMATION_SCHEMA",
+    role=os.getenv("SNOWFLAKE_ROLE"),
+)
+cursor = conn.cursor()
 
-output_base = './output/' + SNOWFLAKE_DATABASE
+# Set output directory
+OUTPUT_DIR = Path("output")
+OUTPUT_DIR.mkdir(exist_ok=True)
 
-object_types = {
-    'TABLE': 'Tables',
-    'VIEW': 'Views',
-    'PROCEDURE': 'Procedures'
-}
-
-def export_table(cursor, database, schema, table, output_path):
-    cursor.execute(f"SELECT GET_DDL('TABLE', '{database}.{schema}.{table}')")
-    ddl = cursor.fetchone()[0]
-
-    cursor.execute(f"SELECT * FROM {database}.{schema}.{table}")
-    rows = cursor.fetchall()
-    columns = [desc[0] for desc in cursor.description]
-
-    insert_statements = []
-    for row in rows:
-        values = []
-        for val in row:
-            if val is None:
-                values.append("NULL")
-            elif isinstance(val, str):
-                escaped_val = val.replace("'", "''")
-                values.append(f"'{escaped_val}'")
-            else:
-                values.append(str(val))
-        insert_stmt = f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({', '.join(values)});"
-        insert_statements.append(insert_stmt)
-
-    with open(output_path, 'w') as f:
-        f.write(f"{ddl};\n\n")
-        for stmt in insert_statements:
-            f.write(stmt + '\n')
-
-def export_object(cursor, object_type, full_name, output_path):
-    cursor.execute(f"SELECT GET_DDL('{object_type}', '{full_name}')")
-    ddl = cursor.fetchone()[0]
-    with open(output_path, 'w') as f:
-        f.write(f"{ddl};\n")
-
-def git_push(commit_message="Auto-sync: Snowflake DDLs and Data"):
-    try:
-        subprocess.run(["git", "add", "."], check=True)
-        subprocess.run(["git", "commit", "-m", commit_message], check=True)
-        remote_url = f"https://x-access-token:{HUB_TOKEN}@github.com/{GITHUB_REPOSITORY}.git"
-        subprocess.run(["git", "remote", "set-url", "origin", remote_url], check=True)
-        subprocess.run(["git", "push", "origin", "main"], check=True)
-        print("\U0001F680 Git commit successful.")
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Git operation failed: {e}")
-
-def extract_all():
-    conn = snowflake.connector.connect(
-        user=SNOWFLAKE_USER,
-        password=SNOWFLAKE_PASSWORD,
-        account=SNOWFLAKE_ACCOUNT,
-        database=SNOWFLAKE_DATABASE,
-        warehouse=SNOWFLAKE_WAREHOUSE
+def is_user_defined_proc(proc_name):
+    """Filter out system or observability-related procedures"""
+    return not (
+        proc_name.startswith("SYSTEM$")
+        or "OBSERVABILITY" in proc_name.upper()
+        or proc_name.startswith("SNOWFLAKE.")
     )
-    cursor = conn.cursor()
 
-    cursor.execute(f"SHOW SCHEMAS IN DATABASE {SNOWFLAKE_DATABASE}")
-    schemas = [row[1] for row in cursor.fetchall() if row[1].upper() not in ['INFORMATION_SCHEMA', 'STAGING', 'PUBLIC']]
+def export_table_ddl(schema, table):
+    cursor.execute(f"SHOW CREATE TABLE {schema}.{table}")
+    ddl = cursor.fetchone()[1]
+    out_path = OUTPUT_DIR / schema / "Tables"
+    out_path.mkdir(parents=True, exist_ok=True)
+    with open(out_path / f"{table}.sql", "w") as f:
+        f.write(ddl)
 
-    for schema in schemas:
-        print(f"\n\U0001F50D Processing schema: {schema}")
-        schema_base = os.path.join(output_base, schema)
-        for folder in object_types.values():
-            os.makedirs(os.path.join(schema_base, folder), exist_ok=True)
+def export_procedure_ddl(schema, proc_name):
+    try:
+        cursor.execute(f"SHOW CREATE PROCEDURE {schema}.{proc_name}")
+        ddl = cursor.fetchone()[1]
+        out_path = OUTPUT_DIR / schema / "Procedures"
+        out_path.mkdir(parents=True, exist_ok=True)
+        with open(out_path / f"{proc_name}.sql", "w") as f:
+            f.write(ddl)
+    except Exception as e:
+        print(f"❌ Failed to export PROCEDURE {proc_name}: {e}")
 
-        for obj_type, folder in object_types.items():
-            cursor.execute(f"SHOW {obj_type}s IN SCHEMA {SNOWFLAKE_DATABASE}.{schema}")
-            objects = cursor.fetchall()
-            print(f"\U0001F4E6 Found {len(objects)} {obj_type}(s) in {schema}")
+def get_tables(schema):
+    cursor.execute(f"SELECT TABLE_NAME FROM {schema}.INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE'")
+    return [row[0] for row in cursor.fetchall()]
 
-            for obj in objects:
-                name = obj[1]
-                output_path = os.path.join(schema_base, folder, f"{name}.sql")
+def get_procedures(schema):
+    cursor.execute(f"""
+        SELECT PROCEDURE_NAME
+        FROM {schema}.INFORMATION_SCHEMA.PROCEDURES
+        WHERE UPPER(PROCEDURE_NAME) NOT LIKE 'SYSTEM$%'
+        AND UPPER(PROCEDURE_NAME) NOT LIKE '%OBSERVABILITY%'
+        AND PROCEDURE_CATALOG != 'SNOWFLAKE'
+    """)
+    return [row[0] for row in cursor.fetchall()]
 
-                try:
-                    if obj_type == 'TABLE':
-                        export_table(cursor, SNOWFLAKE_DATABASE, schema, name, output_path)
-                        print(f"\U0001F4C4 Exported TABLE: {name}")
+def process_schema(schema):
+    print(f"🔍 Processing schema: {schema}")
+    tables = get_tables(schema)
+    print(f"📦 Found {len(tables)} TABLE(s) in {schema}")
+    for table in tables:
+        print(f"📄 Exported TABLE: {table}")
+        export_table_ddl(schema, table)
 
-                    elif obj_type == 'PROCEDURE':
-                        arg_signature = obj[7]  # ARGUMENT_SIGNATURE
-                        full_name = f"{SNOWFLAKE_DATABASE}.{schema}.{name}{arg_signature}"
-                        export_object(cursor, 'PROCEDURE', full_name, output_path)
-                        print(f"\U0001F4C4 Exported PROCEDURE: {name}{arg_signature}")
+    procs = get_procedures(schema)
+    print(f"📦 Found {len(procs)} PROCEDURE(s) in {schema}")
+    for proc in procs:
+        print(f"📄 Exporting PROCEDURE: {proc}")
+        export_procedure_ddl(schema, proc)
 
-                    else:  # VIEW
-                        full_name = f"{SNOWFLAKE_DATABASE}.{schema}.{name}"
-                        export_object(cursor, obj_type, full_name, output_path)
-                        print(f"\U0001F4C4 Exported VIEW: {name}")
+# Main
+user_schemas = ["DATA_PIPELINE"]
+for schema in user_schemas:
+    process_schema(schema)
 
-                except Exception as e:
-                    print(f"❌ Failed to export {obj_type} {name}: {e}")
-
-    cursor.close()
-    conn.close()
-    print("\n✅ DDL + Data extraction complete.")
-    git_push()
-
-if __name__ == "__main__":
-    extract_all()
+cursor.close()
+conn.close()
+print("✅ DDL extraction complete.")
