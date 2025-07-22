@@ -1,4 +1,4 @@
-name: Sync Snowflake DDLs
+name: Sync Snowflake DDLs and Data
 
 on:
   workflow_dispatch:
@@ -26,7 +26,7 @@ jobs:
       run: |
         pip install -r requirements.txt
 
-    - name: Run Snowflake DDL Extractor
+    - name: Run Snowflake DDL and Data Extractor
       env:
         SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
         SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
@@ -36,4 +36,4 @@ jobs:
         HUB_TOKEN: ${{ secrets.HUB_TOKEN }}
         GITHUB_REPOSITORY: ${{ github.repository }}
       run: |
-        python scripts/extract_ddls.py
+        python scripts/extract_ddls_and_data.py
