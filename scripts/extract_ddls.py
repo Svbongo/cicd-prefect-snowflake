@@ -19,11 +19,9 @@ object_types = {
 }
 
 def export_table(cursor, database, schema, table, output_path):
-    # Get CREATE TABLE DDL
     cursor.execute(f"SELECT GET_DDL('TABLE', '{database}.{schema}.{table}')")
     ddl = cursor.fetchone()[0]
 
-    # Get INSERT statements
     cursor.execute(f"SELECT * FROM {database}.{schema}.{table}")
     rows = cursor.fetchall()
     columns = [desc[0] for desc in cursor.description]
@@ -35,38 +33,34 @@ def export_table(cursor, database, schema, table, output_path):
             if val is None:
                 values.append("NULL")
             elif isinstance(val, str):
-                escaped_val = val.replace("'", "''")  # Escape single quotes
+                escaped_val = val.replace("'", "''")
                 values.append(f"'{escaped_val}'")
             else:
                 values.append(str(val))
         insert_stmt = f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({', '.join(values)});"
         insert_statements.append(insert_stmt)
 
-    # Write combined file
     with open(output_path, 'w') as f:
-        f.write(ddl + ';\n\n')
+        f.write(f"{ddl};\n")
         for stmt in insert_statements:
             f.write(stmt + '\n')
 
-def export_object(cursor, object_type, database, schema, name, output_path):
-    cursor.execute(f"SELECT GET_DDL('{object_type}', '{database}.{schema}.{name}')")
+def export_object(cursor, object_type, database, schema, name, signature, output_path):
+    target = signature if object_type == 'PROCEDURE' else f"{database}.{schema}.{name}"
+    cursor.execute(f"SELECT GET_DDL('{object_type}', '{target}')")
     ddl = cursor.fetchone()[0]
     with open(output_path, 'w') as f:
-        f.write(ddl + ';\n')
+        f.write(f"{ddl};\n")
 
 def git_push(commit_message="Auto-sync: Snowflake DDLs and Data"):
     try:
         subprocess.run(["git", "add", "."], check=True)
         subprocess.run(["git", "commit", "-m", commit_message], check=True)
-
         subprocess.run(["git", "remote", "remove", "origin"], check=True)
         remote_url = f"https://x-access-token:{HUB_TOKEN}@github.com/{GITHUB_REPOSITORY}.git"
         subprocess.run(["git", "remote", "add", "origin", remote_url], check=True)
-
         subprocess.run(["git", "config", "--local", "--unset-all", "http.https://github.com/.extraheader"], check=True)
-
         subprocess.run(["git", "push", "origin", "main"], check=True)
-
         print("✅ Changes pushed to main branch.")
     except subprocess.CalledProcessError as e:
         print(f"❌ Git operation failed: {e}")
@@ -87,7 +81,6 @@ def extract_all():
 
     for schema in schemas:
         print(f"🔍 Processing schema: {schema}")
-
         schema_base = os.path.join(output_base, schema)
         for folder in object_types.values():
             os.makedirs(os.path.join(schema_base, folder), exist_ok=True)
@@ -100,19 +93,18 @@ def extract_all():
 
                 for obj in objects:
                     name = obj[1]
+                    signature = obj[3]  # Fully qualified signature for PROCEDUREs
                     output_path = os.path.join(schema_base, folder, f"{name}.sql")
 
                     if obj_type == 'TABLE':
                         export_table(cursor, SNOWFLAKE_DATABASE, schema, name, output_path)
                     else:
-                        export_object(cursor, obj_type, SNOWFLAKE_DATABASE, schema, name, output_path)
-
+                        export_object(cursor, obj_type, SNOWFLAKE_DATABASE, schema, name, signature, output_path)
             except Exception as e:
                 print(f"⚠️ Skipped {obj_type}s for {schema}: {e}")
 
     cursor.close()
     conn.close()
-
     print("✅ DDL + Data extraction complete.")
     git_push()
 
