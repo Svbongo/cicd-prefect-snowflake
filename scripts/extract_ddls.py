@@ -25,17 +25,22 @@ def git_push(commit_message="Auto-sync: Snowflake DDLs"):
         subprocess.run(["git", "add", "."], check=True)
         subprocess.run(["git", "commit", "-m", commit_message], check=True)
 
-        # Force remove the existing remote and add a new one using HUB_TOKEN
+        # Remove existing remote and authentication headers
         subprocess.run(["git", "remote", "remove", "origin"], check=True)
 
         remote_url = f"https://x-access-token:{token}@github.com/{repo_url}.git"
         subprocess.run(["git", "remote", "add", "origin", remote_url], check=True)
 
+        # Remove checkout's extraheader (this is the root cause of the 403)
+        subprocess.run(["git", "config", "--local", "--unset-all", "http.https://github.com/.extraheader"], check=True)
+
+        # Push
         subprocess.run(["git", "push", "origin", "main"], check=True)
 
         print("✅ Changes pushed to main branch.")
     except subprocess.CalledProcessError as e:
         print(f"❌ Git operation failed: {e}")
+
 
 
 
