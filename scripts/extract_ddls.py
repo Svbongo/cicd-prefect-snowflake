@@ -35,7 +35,8 @@ def export_table(cursor, database, schema, table, output_path):
             if val is None:
                 values.append("NULL")
             elif isinstance(val, str):
-                values.append(f"'{val.replace('\'', '\'\'')}'")  # Escape single quotes
+                escaped_val = val.replace("'", "''")  # Escape single quotes
+                values.append(f"'{escaped_val}'")
             else:
                 values.append(str(val))
         insert_stmt = f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({', '.join(values)});"
