@@ -5,6 +5,7 @@ import subprocess
 
 load_dotenv()
 
+# Connect to Snowflake using environment variables
 conn = snowflake.connector.connect(
     user=os.getenv("SNOWFLAKE_USER"),
     password=os.getenv("SNOWFLAKE_PASSWORD"),
@@ -15,6 +16,7 @@ conn = snowflake.connector.connect(
 )
 
 cursor = conn.cursor()
+
 OUTPUT_DIR = "output"
 
 # --- SQL Object Extraction Functions ---
@@ -43,24 +45,25 @@ def get_procedures(database, schema):
         WHERE PROCEDURE_SCHEMA = '{schema}'
         AND UPPER(PROCEDURE_NAME) NOT LIKE 'SYSTEM$%'
     """)
-    return [(row[0], row[1]) for row in cursor.fetchall()]
+    return cursor.fetchall()
 
-def export_ddl(object_type, object_signature, schema, output_path):
+def export_ddl(object_type, object_name, schema, output_path, signature=None):
     try:
-        cursor.execute(f"SHOW {object_type}S LIKE '{object_signature.split('(')[0]}' IN SCHEMA {schema}")
-        show_result = cursor.fetchone()
-        if not show_result:
-            print(f"⚠️  {object_type} {object_signature} not found.")
-            return
+        # Use signature for procedures, if provided
+        if object_type.upper() == "PROCEDURE" and signature:
+            full_name = f"{schema}.{object_name}{signature}"
+        else:
+            full_name = f"{schema}.{object_name}"
 
-        cursor.execute(f"SELECT GET_DDL('{object_type}', '{schema}.{object_signature}')")
+        cursor.execute(f"SELECT GET_DDL('{object_type}', '{full_name}')")
         ddl = cursor.fetchone()[0]
 
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
         with open(output_path, "w") as f:
             f.write(ddl)
-        print(f"📄 Exported {object_type}: {object_signature}")
+        print(f"📄 Exported {object_type}: {object_name}{signature or ''}")
     except Exception as e:
-        print(f"❌ Failed to export {object_type} {object_signature}: {e}")
+        print(f"❌ Failed to export {object_type} {object_name}: {e}")
 
 # --- Schema Handler ---
 
@@ -71,23 +74,21 @@ def process_schema(database, schema):
     print(f"📦 Found {len(tables)} TABLE(s) in {schema}")
     for table in tables:
         path = os.path.join(OUTPUT_DIR, schema, "Tables", f"{table}.sql")
-        os.makedirs(os.path.dirname(path), exist_ok=True)
         export_ddl("TABLE", table, schema, path)
 
     views = get_views(database, schema)
     print(f"📦 Found {len(views)} VIEW(s) in {schema}")
     for view in views:
         path = os.path.join(OUTPUT_DIR, schema, "Views", f"{view}.sql")
-        os.makedirs(os.path.dirname(path), exist_ok=True)
         export_ddl("VIEW", view, schema, path)
 
     procedures = get_procedures(database, schema)
     print(f"📦 Found {len(procedures)} PROCEDURE(s) in {schema}")
-    for proc_name, arg_sig in procedures:
-        full_sig = f"{proc_name}{arg_sig}"
+    for proc_name, signature in procedures:
+        # Format signature as it appears in SHOW/GET_DDL
+        sig = f"({signature})" if signature else "()"
         path = os.path.join(OUTPUT_DIR, schema, "Procedures", f"{proc_name}.sql")
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        export_ddl("PROCEDURE", full_sig, schema, path)
+        export_ddl("PROCEDURE", proc_name, schema, path, sig)
 
 # --- Main Execution ---
 
@@ -101,11 +102,16 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"❌ Error processing schema {schema}: {e}")
 
-    # Git auto commit
+    # Git auto commit and push using PAT
     try:
         subprocess.run(["git", "add", "."], check=True)
         subprocess.run(["git", "commit", "-m", "Auto-sync: Snowflake DDLs and Data"], check=True)
-        subprocess.run(["git", "push", f"https://x-access-token:{os.getenv('HUB_TOKEN')}@github.com/{os.getenv('GITHUB_REPOSITORY')}.git", "HEAD:main"], check=True)
+        subprocess.run([
+            "git",
+            "push",
+            f"https://x-access-token:{os.getenv('HUB_TOKEN')}@github.com/{os.getenv('GITHUB_REPOSITORY')}.git",
+            "HEAD:main"
+        ], check=True)
         print("🚀 Git commit successful.")
     except subprocess.CalledProcessError:
         print("❌ Git operation failed or nothing to commit.")
