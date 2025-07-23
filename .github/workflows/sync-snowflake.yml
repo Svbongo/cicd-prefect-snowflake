@@ -8,39 +8,48 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
+    - name: ✅ Checkout Repository
       uses: actions/checkout@v3
 
-    - name: Set Git identity
+    - name: 🔧 Configure Git Identity
       run: |
         git config --global user.name "GitHub Actions Bot"
         git config --global user.email "actions@github.com"
 
-    - name: Set up Python
+    - name: 🐍 Set up Python 3.11
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
 
-    - name: Install dependencies
+    - name: 📦 Install Python Dependencies
       run: |
         pip install -r requirements.txt
 
-    - name: Run Snowflake DDL and Data Extractor
+    - name: 🏗️ Run Snowflake DDL and Data Extractor
       env:
         SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
         SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
         SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
         SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
         SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+        SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
         HUB_TOKEN: ${{ secrets.HUB_TOKEN }}
         GITHUB_REPOSITORY: ${{ github.repository }}
       run: |
         python scripts/extract_ddls.py
 
-    - name: Push Changes to GitHub
+    - name: 🚀 Push Changes to GitHub
       env:
         HUB_TOKEN: ${{ secrets.HUB_TOKEN }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_ACTOR: ${{ github.actor }}
       run: |
+        set -e
         git add .
-        git commit -m "Auto-sync: Snowflake DDLs and Data" || echo "No changes to commit"
-        git push https://x-access-token:${HUB_TOKEN}@github.com/${{ github.repository }}.git HEAD:main
+        if git diff --cached --quiet; then
+          echo "✅ No changes to commit."
+        else
+          git commit -m "Auto-sync: Snowflake DDLs and Data"
+          git push https://x-access-token:${HUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git HEAD:main
+          echo "📤 Changes pushed successfully."
+        fi
