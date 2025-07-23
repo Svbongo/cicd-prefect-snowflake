@@ -47,23 +47,31 @@ def get_procedures(database, schema):
     """)
     return cursor.fetchall()
 
-def export_ddl(object_type, object_name, schema, output_path, signature=None):
+def export_ddl(object_type, object_name, schema, output_path):
     try:
-        # Use signature for procedures, if provided
-        if object_type.upper() == "PROCEDURE" and signature:
-            full_name = f"{schema}.{object_name}{signature}"
-        else:
-            full_name = f"{schema}.{object_name}"
+        cursor.execute(f"SHOW {object_type}S LIKE '{object_name}' IN SCHEMA {schema}")
+        show_result = cursor.fetchone()
+        if not show_result:
+            print(f"⚠️  {object_type} {object_name} not found.")
+            return
 
-        cursor.execute(f"SELECT GET_DDL('{object_type}', '{full_name}')")
+        full_name = f"{schema}.{object_name}"
+        
+        if object_type == "PROCEDURE":
+            # Fetch signature-less definition
+            ddl_query = f"SELECT GET_DDL('PROCEDURE', '{full_name}')"
+        else:
+            ddl_query = f"SELECT GET_DDL('{object_type}', '{full_name}')"
+        
+        cursor.execute(ddl_query)
         ddl = cursor.fetchone()[0]
 
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
         with open(output_path, "w") as f:
             f.write(ddl)
-        print(f"📄 Exported {object_type}: {object_name}{signature or ''}")
+        print(f"📄 Exported {object_type}: {object_name}")
     except Exception as e:
         print(f"❌ Failed to export {object_type} {object_name}: {e}")
+
 
 # --- Schema Handler ---
 
