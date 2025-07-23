@@ -29,24 +29,24 @@ def get_schemas():
     return [row[0] for row in cursor.fetchall()]
 
 def get_objects(schema, object_type):
-    object_table = {
-        "TABLE": "TABLES",
-        "VIEW": "VIEWS",
-        "PROCEDURE": "PROCEDURES"
-    }[object_type]
-
-    column = {
-        "TABLE": "TABLE_NAME",
-        "VIEW": "TABLE_NAME",
-        "PROCEDURE": "PROCEDURE_NAME"
-    }[object_type]
+    if object_type in ["TABLE", "VIEW"]:
+        info_schema = "TABLES" if object_type == "TABLE" else "VIEWS"
+        name_col = "TABLE_NAME"
+        schema_col = "TABLE_SCHEMA"
+    elif object_type == "PROCEDURE":
+        info_schema = "PROCEDURES"
+        name_col = "PROCEDURE_NAME"
+        schema_col = "PROCEDURE_SCHEMA"
+    else:
+        raise ValueError(f"Unsupported object type: {object_type}")
 
     query = f"""
-        SELECT {column} FROM {SNOWFLAKE_DATABASE}.INFORMATION_SCHEMA.{object_table}
-        WHERE TABLE_SCHEMA = '{schema}'
+        SELECT {name_col} FROM {SNOWFLAKE_DATABASE}.INFORMATION_SCHEMA.{info_schema}
+        WHERE {schema_col} = '{schema}'
     """
     cursor.execute(query)
     return [row[0] for row in cursor.fetchall()]
+
 
 def export_ddl(schema, object_type, name):
     ddl_path = os.path.join("Snowflake", SNOWFLAKE_DATABASE, schema, f"{object_type}s", f"{name}.sql")
