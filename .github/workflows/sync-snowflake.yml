@@ -38,18 +38,13 @@ jobs:
       run: |
         python scripts/extract_ddls.py
 
-    - name: 🚀 Push Changes to GitHub
+    - name: Push Changes to GitHub
       env:
         HUB_TOKEN: ${{ secrets.HUB_TOKEN }}
-        GITHUB_REPOSITORY: ${{ github.repository }}
-        GITHUB_ACTOR: ${{ github.actor }}
       run: |
-        set -e
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
         git add .
-        if git diff --cached --quiet; then
-          echo "✅ No changes to commit."
-        else
-          git commit -m "Auto-sync: Snowflake DDLs and Data"
-          git push https://x-access-token:${HUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git HEAD:main
-          echo "📤 Changes pushed successfully."
-        fi
+        git diff-index --quiet HEAD || git commit -m "Auto-sync: Snowflake DDLs and Data"
+        git push https://x-access-token:${HUB_TOKEN}@github.com/${{ github.repository }}.git HEAD:main
+      
