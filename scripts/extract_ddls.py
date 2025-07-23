@@ -1,81 +1,75 @@
-import snowflake.connector
 import os
-import subprocess
+import snowflake.connector
 
-# Configs (Replace with your actual values or set as ENV variables)
-SNOWFLAKE_ACCOUNT = os.getenv("SNOWFLAKE_ACCOUNT")
+# Load credentials from environment variables
 SNOWFLAKE_USER = os.getenv("SNOWFLAKE_USER")
 SNOWFLAKE_PASSWORD = os.getenv("SNOWFLAKE_PASSWORD")
+SNOWFLAKE_ACCOUNT = os.getenv("SNOWFLAKE_ACCOUNT")
 SNOWFLAKE_DATABASE = os.getenv("SNOWFLAKE_DATABASE")
 SNOWFLAKE_WAREHOUSE = os.getenv("SNOWFLAKE_WAREHOUSE")
+SNOWFLAKE_ROLE = os.getenv("SNOWFLAKE_ROLE", "SYSADMIN")  # default fallback
 
-output_base = './Snowflake/' + SNOWFLAKE_DATABASE
+# Connect to Snowflake
+conn = snowflake.connector.connect(
+    user=SNOWFLAKE_USER,
+    password=SNOWFLAKE_PASSWORD,
+    account=SNOWFLAKE_ACCOUNT,
+    warehouse=SNOWFLAKE_WAREHOUSE,
+    database=SNOWFLAKE_DATABASE,
+    role=SNOWFLAKE_ROLE
+)
 
-object_types = {
-    'TABLE': 'Tables',
-    'VIEW': 'Views',
-    'PROCEDURE': 'Procedures',
-    'TRIGGER': 'Triggers'
-}
+cursor = conn.cursor()
 
-def git_push(commit_message="Auto-sync: Snowflake DDLs"):
+def get_schemas():
+    cursor.execute(f"""
+        SELECT SCHEMA_NAME FROM {SNOWFLAKE_DATABASE}.INFORMATION_SCHEMA.SCHEMATA
+        WHERE SCHEMA_NAME NOT IN ('INFORMATION_SCHEMA', 'PUBLIC')
+    """)
+    return [row[0] for row in cursor.fetchall()]
+
+def get_objects(schema, object_type):
+    object_table = {
+        "TABLE": "TABLES",
+        "VIEW": "VIEWS",
+        "PROCEDURE": "PROCEDURES"
+    }[object_type]
+
+    column = {
+        "TABLE": "TABLE_NAME",
+        "VIEW": "TABLE_NAME",
+        "PROCEDURE": "PROCEDURE_NAME"
+    }[object_type]
+
+    query = f"""
+        SELECT {column} FROM {SNOWFLAKE_DATABASE}.INFORMATION_SCHEMA.{object_table}
+        WHERE TABLE_SCHEMA = '{schema}'
+    """
+    cursor.execute(query)
+    return [row[0] for row in cursor.fetchall()]
+
+def export_ddl(schema, object_type, name):
+    ddl_path = os.path.join("Snowflake", SNOWFLAKE_DATABASE, schema, f"{object_type}s", f"{name}.sql")
+    os.makedirs(os.path.dirname(ddl_path), exist_ok=True)
+    
     try:
-        subprocess.run(["git", "add", "."], check=True)
-        subprocess.run(["git", "commit", "-m", commit_message], check=True)
-        subprocess.run(["git", "push", "origin", "main"], check=True)
-        print("✅ Changes pushed to main branch.")
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Git operation failed: {e}")
+        qualified_name = f"{SNOWFLAKE_DATABASE}.{schema}.{name}"
+        cursor.execute(f"SELECT GET_DDL('{object_type}', '{qualified_name}')")
+        ddl = cursor.fetchone()[0]
+        with open(ddl_path, "w") as f:
+            f.write(ddl)
+        print(f"✅ Exported {object_type} {qualified_name}")
+    except Exception as e:
+        print(f"❌ Failed to export {object_type} {qualified_name}: {e}")
 
-def extract_ddls():
-    conn = snowflake.connector.connect(
-        user=SNOWFLAKE_USER,
-        password=SNOWFLAKE_PASSWORD,
-        account=SNOWFLAKE_ACCOUNT,
-        database=SNOWFLAKE_DATABASE,
-        warehouse=SNOWFLAKE_WAREHOUSE
-    )
-
-    cursor = conn.cursor()
-
-    # Get all schemas
-    cursor.execute(f"SHOW SCHEMAS IN DATABASE {SNOWFLAKE_DATABASE}")
-    schemas = [row[1] for row in cursor.fetchall()]
-
-    for schema in schemas:
-        schema_base = os.path.join(output_base, schema)
-
-        for folder in object_types.values():
-            os.makedirs(os.path.join(schema_base, folder), exist_ok=True)
-
-        print(f"🔍 Processing schema: {schema}")
-
-        for obj_type, folder in object_types.items():
-            try:
-                show_cmd = f"SHOW {obj_type}s IN SCHEMA {SNOWFLAKE_DATABASE}.{schema}"
-                cursor.execute(show_cmd)
-                objects = cursor.fetchall()
-
-                for obj in objects:
-                    name = obj[1]
-                    ddl_cursor = conn.cursor()
-                    ddl_cursor.execute(f"SELECT GET_DDL('{obj_type}', '{SNOWFLAKE_DATABASE}.{schema}.{name}')")
-                    ddl = ddl_cursor.fetchone()[0]
-
-                    file_path = os.path.join(schema_base, folder, f"{name}.sql")
-                    with open(file_path, 'w') as f:
-                        f.write(ddl + ';\n')
-
-                    ddl_cursor.close()
-
-            except Exception as e:
-                print(f"⚠️ Skipped {obj_type}s for {schema}: {e}")
-
-    cursor.close()
-    conn.close()
-
-    print("✅ DDL extraction complete.")
-    git_push()
+def main():
+    for schema in get_schemas():
+        print(f"\n🔍 Processing schema: {schema}")
+        for obj_type in ["TABLE", "VIEW", "PROCEDURE"]:
+            objects = get_objects(schema, obj_type)
+            print(f"📦 Found {len(objects)} {obj_type}(s) in {schema}")
+            for obj in objects:
+                export_ddl(schema, obj_type, obj)
 
 if __name__ == "__main__":
-    extract_ddls()
+    main()
