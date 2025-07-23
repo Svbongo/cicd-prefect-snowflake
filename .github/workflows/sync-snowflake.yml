@@ -3,7 +3,6 @@ name: Sync Snowflake DDLs and Data
 on:
   workflow_dispatch:
 
-
 jobs:
   extract-ddls:
     runs-on: ubuntu-latest
@@ -37,3 +36,11 @@ jobs:
         GITHUB_REPOSITORY: ${{ github.repository }}
       run: |
         python scripts/extract_ddls.py
+
+    - name: Push Changes to GitHub
+      env:
+        HUB_TOKEN: ${{ secrets.HUB_TOKEN }}
+      run: |
+        git add .
+        git commit -m "Auto-sync: Snowflake DDLs and Data" || echo "No changes to commit"
+        git push https://x-access-token:${HUB_TOKEN}@github.com/${{ github.repository }}.git HEAD:main

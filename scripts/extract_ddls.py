@@ -15,7 +15,6 @@ conn = snowflake.connector.connect(
 )
 
 cursor = conn.cursor()
-
 OUTPUT_DIR = "output"
 
 # --- SQL Object Extraction Functions ---
@@ -39,30 +38,29 @@ def get_views(database, schema):
 
 def get_procedures(database, schema):
     cursor.execute(f"""
-        SELECT PROCEDURE_NAME
+        SELECT PROCEDURE_NAME, ARGUMENT_SIGNATURE
         FROM {database}.INFORMATION_SCHEMA.PROCEDURES
         WHERE PROCEDURE_SCHEMA = '{schema}'
         AND UPPER(PROCEDURE_NAME) NOT LIKE 'SYSTEM$%'
     """)
-    return list(set([row[0] for row in cursor.fetchall()]))
+    return [(row[0], row[1]) for row in cursor.fetchall()]
 
-def export_ddl(object_type, object_name, schema, output_path):
+def export_ddl(object_type, object_signature, schema, output_path):
     try:
-        cursor.execute(f"SHOW {object_type}S LIKE '{object_name}' IN SCHEMA {schema}")
+        cursor.execute(f"SHOW {object_type}S LIKE '{object_signature.split('(')[0]}' IN SCHEMA {schema}")
         show_result = cursor.fetchone()
         if not show_result:
-            print(f"⚠️  {object_type} {object_name} not found.")
+            print(f"⚠️  {object_type} {object_signature} not found.")
             return
 
-        full_name = f"{schema}.{object_name}"
-        cursor.execute(f"SELECT GET_DDL('{object_type}', '{full_name}')")
+        cursor.execute(f"SELECT GET_DDL('{object_type}', '{schema}.{object_signature}')")
         ddl = cursor.fetchone()[0]
 
         with open(output_path, "w") as f:
             f.write(ddl)
-        print(f"📄 Exported {object_type}: {object_name}")
+        print(f"📄 Exported {object_type}: {object_signature}")
     except Exception as e:
-        print(f"❌ Failed to export {object_type} {object_name}: {e}")
+        print(f"❌ Failed to export {object_type} {object_signature}: {e}")
 
 # --- Schema Handler ---
 
@@ -85,10 +83,11 @@ def process_schema(database, schema):
 
     procedures = get_procedures(database, schema)
     print(f"📦 Found {len(procedures)} PROCEDURE(s) in {schema}")
-    for proc in procedures:
-        path = os.path.join(OUTPUT_DIR, schema, "Procedures", f"{proc}.sql")
+    for proc_name, arg_sig in procedures:
+        full_sig = f"{proc_name}{arg_sig}"
+        path = os.path.join(OUTPUT_DIR, schema, "Procedures", f"{proc_name}.sql")
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        export_ddl("PROCEDURE", proc, schema, path)
+        export_ddl("PROCEDURE", full_sig, schema, path)
 
 # --- Main Execution ---
 
@@ -106,7 +105,7 @@ if __name__ == "__main__":
     try:
         subprocess.run(["git", "add", "."], check=True)
         subprocess.run(["git", "commit", "-m", "Auto-sync: Snowflake DDLs and Data"], check=True)
-        subprocess.run(["git", "push"], check=True)
+        subprocess.run(["git", "push", f"https://x-access-token:{os.getenv('HUB_TOKEN')}@github.com/{os.getenv('GITHUB_REPOSITORY')}.git", "HEAD:main"], check=True)
         print("🚀 Git commit successful.")
     except subprocess.CalledProcessError:
         print("❌ Git operation failed or nothing to commit.")
