@@ -18,4 +18,5 @@ BEGIN
 
     RETURN ''✅ All base tables dropped successfully.'';
 END;
-';
+';;
+
