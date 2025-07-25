@@ -29,17 +29,17 @@ def get_schemas():
     return [row[0] for row in cursor.fetchall()]
 
 def get_objects(schema, object_type):
-    if object_type == "TABLE":
+    if object_type == "TABLES":
         query = f"""
             SELECT TABLE_NAME FROM {SNOWFLAKE_DATABASE}.INFORMATION_SCHEMA.TABLES
             WHERE TABLE_SCHEMA = '{schema}' AND TABLE_TYPE = 'BASE TABLE'
         """
-    elif object_type == "VIEW":
+    elif object_type == "VIEWS":
         query = f"""
             SELECT TABLE_NAME FROM {SNOWFLAKE_DATABASE}.INFORMATION_SCHEMA.VIEWS
             WHERE TABLE_SCHEMA = '{schema}'
         """
-    elif object_type == "PROCEDURE":
+    elif object_type == "PROCEDURES":
         query = f"""
             SELECT PROCEDURE_NAME FROM {SNOWFLAKE_DATABASE}.INFORMATION_SCHEMA.PROCEDURES
             WHERE PROCEDURE_SCHEMA = '{schema}'
