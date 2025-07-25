@@ -95,14 +95,14 @@ def export_ddl(schema, object_key, name):
                         if val is None:
                             values.append('NULL')
                         elif isinstance(val, str):
-                            values.append(f"'{val.replace("'", "''")}'")
+                            escaped = val.replace("'", "''")
+                            values.append("'{}'".format(escaped))
                         else:
                             values.append(str(val))
-                    insert_stmt = f"INSERT INTO {name} ({', '.join(columns)}) VALUES ({', '.join(values)});"
-                    f.write(insert_stmt + "\n")
+                    insert_stmt = f"INSERT INTO {name} ({', '.join(columns)}) VALUES ({', '.join(values)});\n"
+                    f.write(insert_stmt)
     except Exception as e:
         print(f"❌ Failed to export {snowflake_type} {full_name}: {e}")
-
 def main():
     for schema in get_schemas():
         print(f"\n🔍 Processing schema: {schema}")
