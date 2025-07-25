@@ -7,7 +7,7 @@ SNOWFLAKE_PASSWORD = os.getenv("SNOWFLAKE_PASSWORD")
 SNOWFLAKE_ACCOUNT = os.getenv("SNOWFLAKE_ACCOUNT")
 SNOWFLAKE_DATABASE = os.getenv("SNOWFLAKE_DATABASE")
 SNOWFLAKE_WAREHOUSE = os.getenv("SNOWFLAKE_WAREHOUSE")
-SNOWFLAKE_ROLE = os.getenv("SNOWFLAKE_ROLE", "SYSADMIN")  # fallback default
+SNOWFLAKE_ROLE = os.getenv("SNOWFLAKE_ROLE", "SYSADMIN")
 
 # Connect to Snowflake
 conn = snowflake.connector.connect(
@@ -18,8 +18,14 @@ conn = snowflake.connector.connect(
     database=SNOWFLAKE_DATABASE,
     role=SNOWFLAKE_ROLE
 )
-
 cursor = conn.cursor()
+
+# Object type → folder and Snowflake keyword mappings
+OBJECT_MAP = {
+    "TABLES": {"folder": "Tables", "type": "TABLE"},
+    "VIEWS": {"folder": "Views", "type": "VIEW"},
+    "PROCEDURES": {"folder": "Procedures", "type": "PROCEDURE"},
+}
 
 def get_schemas():
     cursor.execute(f"""
@@ -28,58 +34,63 @@ def get_schemas():
     """)
     return [row[0] for row in cursor.fetchall()]
 
-def get_objects(schema, object_type):
-    if object_type == "TABLES":
-        query = f"""
+def get_objects(schema, object_key):
+    if object_key == "TABLES":
+        cursor.execute(f"""
             SELECT TABLE_NAME FROM {SNOWFLAKE_DATABASE}.INFORMATION_SCHEMA.TABLES
             WHERE TABLE_SCHEMA = '{schema}' AND TABLE_TYPE = 'BASE TABLE'
-        """
-    elif object_type == "VIEWS":
-        query = f"""
+        """)
+    elif object_key == "VIEWS":
+        cursor.execute(f"""
             SELECT TABLE_NAME FROM {SNOWFLAKE_DATABASE}.INFORMATION_SCHEMA.VIEWS
             WHERE TABLE_SCHEMA = '{schema}'
-        """
-    elif object_type == "PROCEDURES":
-        query = f"""
+        """)
+    elif object_key == "PROCEDURES":
+        cursor.execute(f"""
             SELECT PROCEDURE_NAME FROM {SNOWFLAKE_DATABASE}.INFORMATION_SCHEMA.PROCEDURES
             WHERE PROCEDURE_SCHEMA = '{schema}'
-        """
+        """)
     else:
-        raise ValueError(f"Unsupported object type: {object_type}")
+        raise ValueError(f"Unsupported object type: {object_key}")
 
-    cursor.execute(query)
     return [row[0] for row in cursor.fetchall()]
 
-def export_ddl(schema, object_type, name):
-    folder = f"{object_type}s"  # Tables, Views, Procedures
-    out_path = os.path.join("Snowflake", SNOWFLAKE_DATABASE, schema, folder)
+def export_ddl(schema, object_key, name):
+    folder_name = OBJECT_MAP[object_key]["folder"]
+    snowflake_type = OBJECT_MAP[object_key]["type"]
+
+    out_path = os.path.join(
+        "Snowflake",
+        SNOWFLAKE_DATABASE.upper(),
+        schema.upper(),
+        folder_name
+    )
     os.makedirs(out_path, exist_ok=True)
 
-    # Add '()' to procedure names to match Snowflake's GET_DDL requirement
     full_name = f"{SNOWFLAKE_DATABASE}.{schema}.{name}"
-    if object_type == "PROCEDURES":
-        full_name += "()"
+    if object_key == "PROCEDURES":
+        full_name += "()"  # GET_DDL for procedure requires parentheses
 
     try:
-        cursor.execute(f"SELECT GET_DDL('{object_type}', '{full_name}')")
+        cursor.execute(f"SELECT GET_DDL('{snowflake_type}', '{full_name}')")
         ddl = cursor.fetchone()[0]
         with open(os.path.join(out_path, f"{name}.sql"), "w") as f:
             f.write(ddl)
-        print(f"✅ Exported {object_type} {full_name}")
+        print(f"✅ Exported {snowflake_type} {full_name}")
     except Exception as e:
-        print(f"❌ Failed to export {object_type} {full_name}: {e}")
+        print(f"❌ Failed to export {snowflake_type} {full_name}: {e}")
 
 def main():
     for schema in get_schemas():
         print(f"\n🔍 Processing schema: {schema}")
-        for obj_type in ["TABLES", "VIEWS", "PROCEDURES"]:
+        for object_key in OBJECT_MAP.keys():
             try:
-                objects = get_objects(schema, obj_type)
-                print(f"📦 Found {len(objects)} {obj_type}(s) in {schema}")
+                objects = get_objects(schema, object_key)
+                print(f"📦 Found {len(objects)} {object_key} in {schema}")
                 for obj in objects:
-                    export_ddl(schema, obj_type, obj)
+                    export_ddl(schema, object_key, obj)
             except Exception as e:
-                print(f"❌ Error processing {obj_type} in {schema}: {e}")
+                print(f"❌ Error processing {object_key} in {schema}: {e}")
 
 if __name__ == "__main__":
     main()
