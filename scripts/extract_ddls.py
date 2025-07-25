@@ -67,16 +67,39 @@ def export_ddl(schema, object_key, name):
     )
     os.makedirs(out_path, exist_ok=True)
 
+    file_path = os.path.join(out_path, f"{name.upper()}.sql")
     full_name = f"{SNOWFLAKE_DATABASE}.{schema}.{name}"
     if object_key == "PROCEDURES":
-        full_name += "()"  # GET_DDL for procedure requires parentheses
+        full_name += "()"  # Required for procedures
 
     try:
+        # Write DDL
         cursor.execute(f"SELECT GET_DDL('{snowflake_type}', '{full_name}')")
         ddl = cursor.fetchone()[0]
-        with open(os.path.join(out_path, f"{name}.sql"), "w") as f:
-            f.write(ddl)
+
+        with open(file_path, "w") as f:
+            f.write(ddl + ";\n\n")
+
         print(f"✅ Exported {snowflake_type} {full_name}")
+
+        # Write INSERTs for TABLES only
+        if object_key == "TABLES":
+            cursor.execute(f"SELECT * FROM {SNOWFLAKE_DATABASE}.{schema}.{name}")
+            rows = cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+
+            with open(file_path, "a") as f:
+                for row in rows:
+                    values = []
+                    for val in row:
+                        if val is None:
+                            values.append('NULL')
+                        elif isinstance(val, str):
+                            values.append(f"'{val.replace("'", "''")}'")
+                        else:
+                            values.append(str(val))
+                    insert_stmt = f"INSERT INTO {name} ({', '.join(columns)}) VALUES ({', '.join(values)});"
+                    f.write(insert_stmt + "\n")
     except Exception as e:
         print(f"❌ Failed to export {snowflake_type} {full_name}: {e}")
 
