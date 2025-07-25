@@ -30,32 +30,10 @@ jobs:
       - name: Detect modified SQL files between main and cicd-sql-release HEAD
         id: detect_sqls
         run: |
-          set -eo pipefail
           echo "🧠 Detecting new/modified .sql files between main and cicd-sql-release HEAD..."
-
-          # Capture comparison context
-          MAIN_LATEST_TAG=$(git tag --sort=-creatordate | head -n 1 || echo "none")
-          MAIN_COMMIT=$(git rev-parse origin/main)
-          CICD_COMMIT=$(git rev-parse HEAD)
-
-          echo "🔖 Comparison Context:"
-          echo "Main branch latest tag: $MAIN_LATEST_TAG"
-          echo "Main branch commit SHA: $MAIN_COMMIT"
-          echo "cicd-sql-release HEAD SHA: $CICD_COMMIT"
-
-          echo "🔍 Comparing cicd-sql-release HEAD with main branch HEAD"
           git diff --name-status origin/main...HEAD > raw_diff.txt
-
-          echo "📄 Raw diff content:"
-          cat raw_diff.txt
-
           grep '\.sql$' raw_diff.txt | awk '$1 ~ /^(A|M|R100)$/ { print $2 }' > raw_sql_changes.txt || touch raw_sql_changes.txt
-
-          echo "📁 Filtered .sql changes:"
-          cat raw_sql_changes.txt || echo "❌ No matching .sql changes"
-
           awk '{ print $1 }' raw_sql_changes.txt > sql_files.txt || touch sql_files.txt
-
           echo "sql_files<<EOF" >> $GITHUB_OUTPUT
           cat sql_files.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -76,28 +54,23 @@ jobs:
             echo "- No SQL files found" >> release_notes.md
           fi
 
-      - name: Delete existing nightly release and tag if exists
-        continue-on-error: true
+      - name: Generate unique nightly tag
+        id: generate_tag
         run: |
-          echo "🗑️ Deleting existing nightly release and tag if present..."
-
-          # Get release ID for nightly-placeholder if it exists
-          RELEASE_ID=$(gh api repos/${{ github.repository }}/releases/tags/nightly-placeholder --jq '.id' || echo "")
-
-          # If release exists, delete it
-          if [ -n "$RELEASE_ID" ]; then
-            echo "🔗 Deleting release ID: $RELEASE_ID"
-            gh api --method DELETE repos/${{ github.repository }}/releases/$RELEASE_ID
-          fi
-
-          # Delete tag locally and remotely
-          git tag -d nightly-placeholder || true
-          git push --delete origin nightly-placeholder || true
-
+          BASE_TAG="nightly-$(date +%Y-%m-%d)"
+          i=1
+          while gh release view "${BASE_TAG}-$(printf "%03d" $i)" &>/dev/null; do
+            i=$((i+1))
+          done
+          TAG_NAME="${BASE_TAG}-$(printf "%03d" $i)"
+          echo "✅ Using tag: $TAG_NAME"
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.HUB_TOKEN }}
 
       - name: Create new nightly release (not draft, marked as latest)
         run: |
-          gh release create nightly-placeholder \
+          gh release create "${{ steps.generate_tag.outputs.tag_name }}" \
             --title "Nightly SQL Release - $(date '+%Y-%m-%d %H:%M:%S')" \
             --notes-file release_notes.md \
             --target cicd-sql-release \
