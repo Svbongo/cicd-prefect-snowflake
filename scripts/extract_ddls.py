@@ -57,7 +57,7 @@ def export_ddl(schema, object_type, name):
 
     # Add '()' to procedure names to match Snowflake's GET_DDL requirement
     full_name = f"{SNOWFLAKE_DATABASE}.{schema}.{name}"
-    if object_type == "PROCEDURE":
+    if object_type == "PROCEDURES":
         full_name += "()"
 
     try:
@@ -72,7 +72,7 @@ def export_ddl(schema, object_type, name):
 def main():
     for schema in get_schemas():
         print(f"\n🔍 Processing schema: {schema}")
-        for obj_type in ["TABLE", "VIEW", "PROCEDURE"]:
+        for obj_type in ["TABLES", "VIEWS", "PROCEDURES"]:
             try:
                 objects = get_objects(schema, obj_type)
                 print(f"📦 Found {len(objects)} {obj_type}(s) in {schema}")
