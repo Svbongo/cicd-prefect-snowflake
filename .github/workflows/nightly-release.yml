@@ -31,12 +31,26 @@ jobs:
         id: detect_sqls
         run: |
           echo "🧠 Detecting new/modified .sql files between main and cicd-sql-release HEAD..."
+      
+          # Step 1: Generate raw git diff
+          git fetch origin main
           git diff --name-status origin/main...HEAD > raw_diff.txt
-          grep '\.sql$' raw_diff.txt | awk '$1 ~ /^(A|M|R100)$/ { print $2 }' > raw_sql_changes.txt || touch raw_sql_changes.txt
-          awk '{ print $1 }' raw_sql_changes.txt > sql_files.txt || touch sql_files.txt
+      
+          # Step 2: Extract only added/modified/renamed .sql files (case-insensitive match)
+          grep -Ei '\.sql$' raw_diff.txt | awk '$1 ~ /^(A|M|R100)$/ { print $2 }' > raw_sql_changes.txt || touch raw_sql_changes.txt
+      
+          # Step 3: Normalize filenames to UPPERCASE (cross-platform safe)
+          awk '{ print toupper($1) }' raw_sql_changes.txt | sort | uniq > sql_files.txt || touch sql_files.txt
+      
+          # Step 4: Save output to GitHub Actions output block
           echo "sql_files<<EOF" >> $GITHUB_OUTPUT
           cat sql_files.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+      
+          # Debug info
+          echo "📂 Final detected SQL files:"
+          cat sql_files.txt
+      
 
       - name: Debug detected files
         run: |
