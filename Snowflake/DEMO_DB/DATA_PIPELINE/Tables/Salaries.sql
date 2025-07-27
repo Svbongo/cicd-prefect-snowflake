@@ -1,4 +1,7 @@
-    CREATE OR REPLACE TABLE Salaries (
+USE DATABASE DEMO_DB;
+USE SCHEMA DATA_PIPELINE;
+
+CREATE OR REPLACE TABLE Salaries (
     Employee_ID INT,
     Base_Salary FLOAT,
     Bonus FLOAT,
