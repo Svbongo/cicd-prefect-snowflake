@@ -65,17 +65,16 @@ def execute_sql_files(sql_file_list, file_type):
 
 @flow(name="main-flow")
 def main_flow(file_path: str):
-    print(f"📖 Reading SQL file list from: {file_path}")
-
+    conn = get_snowflake_connection()
     try:
-        paths = read_sql_file_list(file_path)
-        categorized = categorize_sql_files(paths)
-
-        for category, files in categorized.items():
-            execute_sql_files(files, category)
-
+        with conn.cursor() as cur, open(file_path, "r") as f:
+            print(f"📂 Running: {file_path}")
+            try:
+                cur.execute(f.read(), multiple_statements=True)
+                print(f"✅ Success: {file_path}")
+            except Exception as e:
+                print(f"❌ Error in {file_path}: {e}")
     finally:
-        snowflake_cursor.close()
         conn.close()
         print("✅ Snowflake connection closed.")
 
