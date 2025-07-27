@@ -48,10 +48,10 @@ jobs:
         run: |
           echo "📋 Sorting modified files by type..."
 
-          grep -i "/TABLES/" modified_sql_files.txt > sorted_sql.txt || true
-          grep -i "/VIEWS/" modified_sql_files.txt >> sorted_sql.txt || true
-          grep -i "/PROCEDURES/" modified_sql_files.txt >> sorted_sql.txt || true
-          grep -i "/TRIGGERS/" modified_sql_files.txt >> sorted_sql.txt || true
+          grep -i "/Tables/" modified_sql_files.txt > sorted_sql.txt || true
+          grep -i "/Procedures/" modified_sql_files.txt >> sorted_sql.txt || true
+          grep -i "/Views/" modified_sql_files.txt >> sorted_sql.txt || true
+          grep -i "/Triggers/" modified_sql_files.txt >> sorted_sql.txt || true
 
           echo "🔄 Final execution order:"
           cat sorted_sql.txt
