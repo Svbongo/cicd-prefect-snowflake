@@ -1,16 +1,14 @@
 from prefect import flow, task
 import os
+import argparse
 
-# --- Configurable base SQL folder ---
 SQL_FOLDER = "sql"
 
-# --- Task: Read SQL file list from a release note or file list ---
 @task
 def read_sql_file_list(file_path: str) -> list:
     with open(file_path, "r") as f:
         return [line.strip() for line in f if line.strip()]
 
-# --- Task: Categorize SQL files ---
 @task
 def categorize_sql_files(sql_file_paths: list) -> dict:
     categories = {"TABLES": [], "VIEWS": [], "PROCEDURES": [], "TRIGGERS": []}
@@ -26,32 +24,17 @@ def categorize_sql_files(sql_file_paths: list) -> dict:
             categories["TRIGGERS"].append(path)
     return categories
 
-# --- Task: Execute SQL files (generalized path resolution) ---
 @task
 def execute_sql_files(file_paths: list, category: str):
     print(f"🚀 Executing {category} SQL files...")
-
-    # Recursively find all SQL files under SQL_FOLDER
-    all_sql_files = []
-    for root, dirs, files in os.walk(SQL_FOLDER):
-        for file in files:
-            if file.endswith(".sql"):
-                rel_path = os.path.relpath(os.path.join(root, file), SQL_FOLDER)
-                all_sql_files.append(rel_path.replace("\\", "/"))  # Normalize for Windows
-
-    # Try to match each file path from input to real file in project
-    for target_file in file_paths:
-        normalized_target = target_file.replace("\\", "/").upper()
-        matched_path = next((f for f in all_sql_files if f.upper().endswith(normalized_target)), None)
-
-        if matched_path:
-            full_path = os.path.join(SQL_FOLDER, matched_path)
+    for file_path in file_paths:
+        full_path = os.path.join(SQL_FOLDER, file_path)
+        if os.path.exists(full_path):
             print(f"🔹 Executing {full_path}...")
-            # --- Place your Snowflake execution logic here ---
+            # Replace with actual Snowflake execution logic
         else:
-            print(f"⚠️ File not found: {target_file}")
+            print(f"⚠️ File not found: {full_path}")
 
-# --- Main Flow ---
 @flow(name="main-flow")
 def main_flow(file_path: str):
     print(f"📖 Reading SQL file list from: {file_path}")
@@ -61,8 +44,11 @@ def main_flow(file_path: str):
     for category, files in categorized.items():
         execute_sql_files(files, category)
 
-# --- CLI Runner ---
 if __name__ == "__main__":
-    import sys
-    input_file = sys.argv[1] if len(sys.argv) > 1 else "modified_sql_files.txt"
-    main_flow(input_file)
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--release-notes", type=str, default="modified_sql_files.txt",
+        help="Path to the release notes or SQL file list"
+    )
+    args = parser.parse_args()
+    main_flow(args.release_notes)
