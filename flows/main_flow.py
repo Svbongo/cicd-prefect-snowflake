@@ -39,7 +39,6 @@ def categorize_sql_files(sql_file_paths: list) -> dict:
 
 @task
 def execute_sql_files(sql_file_list: list):
-    """Executes SQL files against Snowflake."""
     conn = get_snowflake_connection()
 
     try:
@@ -54,27 +53,30 @@ def execute_sql_files(sql_file_list: list):
                 with conn.cursor() as cur, open(normalized_path, "r") as f:
                     sql = f.read()
 
-                    # Log current DB/schema
-                    cur.execute("SELECT CURRENT_DATABASE(), CURRENT_SCHEMA()")
-                    db, schema = cur.fetchone()
-                    print(f"🔍 Using DB: {db} | Schema: {schema}")
+                    # Execute USE statements directly if present
+                    for line in sql.splitlines():
+                        line_clean = line.strip().lower()
+                        if line_clean.startswith("use database"):
+                            print(f"🧭 Setting DB: {line.strip()}")
+                            cur.execute(line.strip())
+                        elif line_clean.startswith("use schema"):
+                            print(f"📂 Setting Schema: {line.strip()}")
+                            cur.execute(line.strip())
 
-                    if "create or replace procedure" in sql.lower():
-                        print("🧩 Detected stored procedure — executing as single block.")
-                        cur.execute(sql)
-                    else:
-                        statements = [stmt.strip() for stmt in sql.strip().split(";") if stmt.strip()]
-                        for idx, stmt in enumerate(statements):
-                            if not stmt.startswith("--"):
-                                print(f"🔹 Executing statement {idx+1}: {stmt[:60]}...")
-                                cur.execute(stmt)
+                    # Now re-split remaining statements and execute
+                    statements = [stmt.strip() for stmt in sql.strip().split(";") if stmt.strip()]
+                    for idx, stmt in enumerate(statements):
+                        if not stmt.lower().startswith("use") and not stmt.startswith("--"):
+                            print(f"🔹 Executing statement {idx+1}: {stmt[:60]}...")
+                            cur.execute(stmt)
 
-                print(f"✅ Success: {sql_file}")
+                    print(f"✅ Success: {sql_file}")
             except Exception as e:
                 print(f"❌ Error in {sql_file}:\n{e}")
     finally:
         conn.close()
         print("✅ Snowflake connection closed.")
+
 
 @flow(name="main-flow")
 def main_flow(file_path: str):
