@@ -10,46 +10,52 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1️⃣ Checkout the cicd-sql-release branch
       - name: Checkout Code
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
           ref: cicd-sql-release
 
+      # 2️⃣ Set up Python
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
+      # 3️⃣ Install Python dependencies
       - name: Install Python Dependencies
         run: |
           pip install -r requirements.txt
 
-      - name: Print working directory
-        run: pwd
+      # 4️⃣ Print working directory (for debugging)
+      - name: Print Working Directory and File Tree
+        run: |
+          pwd
+          ls -R
 
-      - name: List all files
-        run: ls -R
-
+      # 5️⃣ Get latest release tag
       - name: Get Latest Release Tag
         id: get_release
         run: |
-          echo "RELEASE_TAG=$(curl -s -H "Authorization: token ${{ secrets.HUB_TOKEN }}" \
-          https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r .tag_name)" >> $GITHUB_ENV
+          echo "RELEASE_TAG=$(curl -s -H 'Authorization: token ${{ secrets.HUB_TOKEN }}' \
+            https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r .tag_name)" >> $GITHUB_ENV
 
+      # 6️⃣ Extract SQL file paths from release notes body
       - name: Extract SQL Paths from Latest Release Notes
         id: extract_sql
         run: |
           curl -s -H "Authorization: token ${{ secrets.HUB_TOKEN }}" \
             https://api.github.com/repos/${{ github.repository }}/releases/latest \
             | jq -r '.body' \
-            | grep -Eo '[A-Z]+(/[A-Z0-9_]+)+\.SQL' \
-            | sed 's/\*\*\*//g' \
+            | grep -Eo '[-_/A-Za-z0-9]+\.sql' \
+            | sort -u \
             > sorted_sql_ordered.txt
 
           echo "📄 Extracted SQL files:"
           cat sorted_sql_ordered.txt
 
+      # 7️⃣ Sort SQL files by folder type (TABLES → PROCEDURES → VIEWS → TRIGGERS)
       - name: Sort SQL Files by Type
         id: sort_sql
         run: |
@@ -65,7 +71,19 @@ jobs:
           echo "🔄 Final execution order:"
           cat sorted_sql_ordered.txt
 
-      - name: Run Prefect Flow
+      # 8️⃣ Verify file structure before running Prefect
+      - name: Verify file paths
+        run: |
+          echo "🔍 Contents of sorted_sql_ordered.txt:"
+          cat sorted_sql_ordered.txt
+          echo "---"
+          echo "📁 Current Directory:"
+          pwd
+          echo "📂 Files:"
+          ls -al
+
+      # 9️⃣ Run Prefect Flow with the sorted SQL file list
+      - name: Run Prefect Flow (Execute SQL in Snowflake)
         run: python flows/main_flow.py --release-notes sorted_sql_ordered.txt
         env:
           SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
@@ -75,9 +93,3 @@ jobs:
           SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
           SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
           SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-        
-      - name: Checkout code
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-        
