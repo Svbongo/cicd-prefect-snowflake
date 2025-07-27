@@ -1,4 +1,4 @@
-    CREATE OR REPLACE TABLE Salaries (
+CREATE OR REPLACE TABLE Salaries (
     Employee_ID INT,
     Base_Salary FLOAT,
     Bonus FLOAT,
