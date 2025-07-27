@@ -3,7 +3,7 @@ import argparse
 import snowflake.connector
 from prefect import flow, task
 
-ORDER = ["Tables", "Views", "Procedures", "Triggers"]
+ORDER = ["TABLES", "VIEWS", "PROCEDURES", "TRIGGERS"]
 
 # 🔁 Connect to Snowflake and execute SQL file
 def execute_sql_file(file_path):
@@ -80,8 +80,9 @@ def main_flow(release_notes_path="sorted_sql.txt"):
     categorized = {key: [] for key in ORDER}
 
     for path in sql_files:
+        upper_path = path.upper()
         for category in ORDER:
-            if f"/{category.upper()}/" in path or f"\\{category.upper()}\\" in path:
+            if f"/{category}/" in upper_path or f"\\{category}\\" in upper_path:
                 categorized[category].append(path)
 
     # 🔁 Execute in category order
