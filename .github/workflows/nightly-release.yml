@@ -54,18 +54,23 @@ jobs:
       - name: Debug detected files
         run: |
           echo "🧾 SQL files detected:"
-          cat sorted_sql.txt || echo "❌ None found"
-
-          - name: Create release notes and attach sorted_sql.txt
-          run: |
-            echo "📝 Modified SQL Files:" > release_notes.md
-            if [ -s sorted_sql.txt ]; then
-              while read file; do
-                echo "- $file" >> release_notes.md
-              done < sorted_sql.txt
-            else
-              echo "- No SQL files found" >> release_notes.md
+          if [ -f sorted_sql.txt ]; then
+            cat sorted_sql.txt
+          else
+              echo "❌ No sorted_sql.txt found"
             fi
+        
+
+      - name: Create release notes and attach sorted_sql.txt
+        run: |
+          echo "📝 Modified SQL Files:" > release_notes.md
+          if [ -f sorted_sql.txt ]; then
+            while read file; do
+              echo "- $file" >> release_notes.md
+            done < sorted_sql.txt
+          else
+            echo "- No SQL files found" >> release_notes.md
+          fi
         
 
       - name: Generate unique nightly tag
