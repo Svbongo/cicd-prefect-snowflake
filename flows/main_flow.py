@@ -22,15 +22,15 @@ def categorize_sql_files(sql_files):
 
     for path in sql_files:
         path_upper = path.upper()
-        if "TABLES" in path_upper:
-            categories["TABLES"].append(path)
-        elif "VIEWS" in path_upper:
-            categories["VIEWS"].append(path)
-        elif "PROCEDURES" in path_upper:
-            categories["PROCEDURES"].append(path)
-        elif "TRIGGERS" in path_upper:
-            categories["TRIGGERS"].append(path)
-        else:
+        parts = path_upper.split('/')
+        matched = False
+        for part in parts:
+            part = part.strip()
+            if part in categories:
+                categories[part].append(path)
+                matched = True
+                break
+        if not matched:
             print(f"⚠️ Unrecognized path (skipped): {path}")
 
     for category, files in categories.items():
@@ -42,6 +42,7 @@ def categorize_sql_files(sql_files):
                 print(f"  └─ {f}")
 
     return categories
+
 
 @flow(name="main-flow")
 def main_flow(release_notes: str = "sorted_sql.txt"):
