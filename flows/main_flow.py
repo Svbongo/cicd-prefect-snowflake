@@ -36,6 +36,7 @@ def categorize_sql_files(sql_file_paths: list) -> dict:
             categories["TRIGGERS"].append(path)
     return categories
 
+    
 @task
 def execute_sql_files(sql_file_list: list, file_type: str):
     """Executes SQL files of a specific type against Snowflake."""
@@ -55,17 +56,10 @@ def execute_sql_files(sql_file_list: list, file_type: str):
                     sql = f.read()
 
                     if file_type.upper() == "PROCEDURES":
-                        # ✅ Replace $$ delimiters with single quotes
-                        cleaned_sql = sql.replace("$$", "'")
-
-                        # 🧪 Optional: print for debug
-                        print("🔍 Final SQL to execute:\n", cleaned_sql)
-
-                        # Execute entire block at once
-                        cur.execute(cleaned_sql)
-
+                        # ✅ Use execute_string() for complex/multi-statement blocks
+                        cur.execute_string(sql)
                     else:
-                        # Execute each statement separately for other types
+                        # Execute each statement separately
                         for stmt in sql.strip().split(";"):
                             stmt = stmt.strip()
                             if stmt and not stmt.startswith("--"):
@@ -77,7 +71,6 @@ def execute_sql_files(sql_file_list: list, file_type: str):
     finally:
         conn.close()
         print("✅ Snowflake connection closed.")
-
 
 
 # ✅ Corrected main flow entrypoint
