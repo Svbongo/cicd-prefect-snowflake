@@ -36,9 +36,9 @@ def categorize_sql_files(sql_file_paths: list) -> dict:
             categories["TRIGGERS"].append(path)
     return categories
 
-    
-@task
-def execute_sql_files(sql_file_list: list, file_type: str):
+
+@flow(name="main-flow")
+def main_flow(sql_file_list: list, file_type: str):
     """Executes SQL files of a specific type against Snowflake."""
     print(f"\n🚀 Executing {file_type.upper()} SQL files...")
     conn = get_snowflake_connection()
@@ -56,10 +56,10 @@ def execute_sql_files(sql_file_list: list, file_type: str):
                     sql = f.read()
 
                     if file_type.upper() == "PROCEDURES":
-                        # ✅ Use execute_string() for complex/multi-statement blocks
+                        # Execute the entire content as a single block
                         cur.execute_string(sql)
                     else:
-                        # Execute each statement separately
+                        # Execute statements one by one (for DDL, DML, etc.)
                         for stmt in sql.strip().split(";"):
                             stmt = stmt.strip()
                             if stmt and not stmt.startswith("--"):
@@ -72,16 +72,6 @@ def execute_sql_files(sql_file_list: list, file_type: str):
         conn.close()
         print("✅ Snowflake connection closed.")
 
-
-# ✅ Corrected main flow entrypoint
-@flow(name="main-flow")
-def main_flow(file_path: str):
-    sql_paths = read_sql_file_list(file_path)
-    categorized = categorize_sql_files(sql_paths)
-
-    for file_type, files in categorized.items():
-        if files:
-            execute_sql_files(files, file_type)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
