@@ -3,7 +3,8 @@ import os
 import argparse
 
 # --- Configurable SQL folder path ---
-SQL_FOLDER = "sql"
+SQL_FOLDER = "."  # or "" to treat paths as relative from repo root
+
 
 # --- Task to read SQL file list ---
 @task
@@ -32,7 +33,8 @@ def categorize_sql_files(sql_file_paths: list) -> dict:
 def execute_sql_files(file_paths: list, category: str):
     print(f"🚀 Executing {category} SQL files...")
     for file_path in file_paths:
-        full_path = os.path.join(SQL_FOLDER, file_path)
+        full_path = file_path  # since the file_path is already a full relative path
+
         if os.path.exists(full_path):
             print(f"🔹 Executing {full_path}...")
             # Integrate Snowflake execution here
