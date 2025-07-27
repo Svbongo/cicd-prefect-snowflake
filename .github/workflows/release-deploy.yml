@@ -35,26 +35,28 @@ jobs:
         id: extract_sql
         run: |
           curl -s -H "Authorization: token ${{ secrets.HUB_TOKEN }}" \
-          https://api.github.com/repos/${{ github.repository }}/releases/tags/${RELEASE_TAG} \
-          | jq -r '.body' > release_notes.md
-
+            https://api.github.com/repos/${{ github.repository }}/releases/tags/${RELEASE_TAG} \
+            | jq -r '.body' > release_notes.md
+        
           echo "📝 Extracting modified SQL files:"
-          grep -oP 'Snowflake/[^\s]*\.sql' release_notes.md > modified_sql_files.txt || true
-          echo "🔍 Preview of modified SQL paths:"
+          grep -oP 'SNOWFLAKE/[^\s]*\.SQL' release_notes.md > modified_sql_files.txt || true
+          echo "📘 Preview of modified SQL paths:"
           cat modified_sql_files.txt
+        
 
       - name: Sort SQL Files by Type
         id: sort_sql
         run: |
           echo "📋 Sorting modified files by type..."
-
-          grep -i "/Tables/" modified_sql_files.txt > sorted_sql.txt || true
-          grep -i "/Procedures/" modified_sql_files.txt >> sorted_sql.txt || true
-          grep -i "/Views/" modified_sql_files.txt >> sorted_sql.txt || true
-          grep -i "/Triggers/" modified_sql_files.txt >> sorted_sql.txt || true
-
+        
+          grep -i "/TABLES/" modified_sql_files.txt > sorted_sql.txt || true
+          grep -i "/PROCEDURES/" modified_sql_files.txt >> sorted_sql.txt || true
+          grep -i "/VIEWS/" modified_sql_files.txt >> sorted_sql.txt || true
+          grep -i "/TRIGGERS/" modified_sql_files.txt >> sorted_sql.txt || true
+        
           echo "🔄 Final execution order:"
           cat sorted_sql.txt
+        
 
       - name: Run Prefect Flow
         run: python flows/main_flow.py --release-notes sorted_sql.txt
