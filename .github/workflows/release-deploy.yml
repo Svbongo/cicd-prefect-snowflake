@@ -1,9 +1,9 @@
 name: Deploy SQL to Snowflake
 
 on:
-    release:
-      types: [published]
-    workflow_dispatch:
+  release:
+    types: [published]
+  workflow_dispatch:
 
 jobs:
   deploy-sql:
@@ -40,6 +40,7 @@ jobs:
 
           echo "📝 Extracting modified SQL files:"
           grep -oP 'Snowflake/[^\s]*\.sql' release_notes.md > modified_sql_files.txt || true
+          echo "🔍 Preview of modified SQL paths:"
           cat modified_sql_files.txt
 
       - name: Sort SQL Files by Type
@@ -47,10 +48,10 @@ jobs:
         run: |
           echo "📋 Sorting modified files by type..."
 
-          grep "/Tables/" modified_sql_files.txt > sorted_sql.txt || true
-          grep "/Procedures/" modified_sql_files.txt >> sorted_sql.txt || true
-          grep "/Views/" modified_sql_files.txt >> sorted_sql.txt || true
-          grep "/Triggers/" modified_sql_files.txt >> sorted_sql.txt || true
+          grep -i "/TABLES/" modified_sql_files.txt > sorted_sql.txt || true
+          grep -i "/VIEWS/" modified_sql_files.txt >> sorted_sql.txt || true
+          grep -i "/PROCEDURES/" modified_sql_files.txt >> sorted_sql.txt || true
+          grep -i "/TRIGGERS/" modified_sql_files.txt >> sorted_sql.txt || true
 
           echo "🔄 Final execution order:"
           cat sorted_sql.txt
@@ -65,4 +66,3 @@ jobs:
           SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
           SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
           SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-        
