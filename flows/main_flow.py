@@ -38,6 +38,7 @@ def categorize_sql_files(sql_file_paths: list) -> dict:
 
 @task
 def execute_sql_files(sql_file_list: list, file_type: str):
+    """Executes SQL files of a specific type against Snowflake."""
     print(f"\n🚀 Executing {file_type.upper()} SQL files...")
     conn = get_snowflake_connection()
 
@@ -53,10 +54,11 @@ def execute_sql_files(sql_file_list: list, file_type: str):
                 with conn.cursor() as cur, open(normalized_path, "r") as f:
                     sql = f.read()
 
-                    # PROCEDURES = multi-statement block
                     if file_type.upper() == "PROCEDURES":
-                        cur.execute_string(sql)
+                        # ❗ Execute entire content at once for procedures
+                        cur.execute(sql)
                     else:
+                        # For others: split and execute line by line
                         for stmt in sql.strip().split(";"):
                             stmt = stmt.strip()
                             if stmt and not stmt.startswith("--"):
@@ -68,6 +70,7 @@ def execute_sql_files(sql_file_list: list, file_type: str):
     finally:
         conn.close()
         print("✅ Snowflake connection closed.")
+
 
 # ✅ Corrected main flow entrypoint
 @flow(name="main-flow")
