@@ -25,15 +25,26 @@ def categorize_sql_files(sql_file_paths: list) -> dict:
     return categories
 
 @task
-def execute_sql_files(file_paths: list, category: str):
-    print(f"🚀 Executing {category} SQL files...")
-    for file_path in file_paths:
-        full_path = os.path.join(SQL_FOLDER, file_path)
-        if os.path.exists(full_path):
-            print(f"🔹 Executing {full_path}...")
-            # Replace with actual Snowflake execution logic
-        else:
-            print(f"⚠️ File not found: {full_path}")
+def execute_sql_files(sql_file_list, file_type):
+    print(f"🚀 Executing {file_type.upper()} SQL files...")
+
+    for sql_file in sql_file_list:
+        if file_type.upper() not in sql_file.upper():
+            continue
+
+        # Normalize path (avoid uppercased 'SNOWFLAKE' mismatch)
+        normalized_path = Path(sql_file)
+        if not normalized_path.exists():
+            print(f"⚠️ File not found: {normalized_path}")
+            continue
+
+        try:
+            with open(normalized_path, "r") as file:
+                sql_commands = file.read()
+                print(f"✅ Executing {sql_file}...")
+                snowflake_cursor.execute(sql_commands)
+        except Exception as e:
+            print(f"❌ Error executing {sql_file}: {e}")
 
 @flow(name="main-flow")
 def main_flow(file_path: str):
