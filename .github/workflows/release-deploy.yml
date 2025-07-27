@@ -39,29 +39,26 @@ jobs:
             | jq -r '.body' \
             | grep -Eo '[A-Z]+(/[A-Z0-9_]+)+\.SQL' \
             | sed 's/\*\*\*//g' \
-            > sorted_sql.txt
-    
+            > sorted_sql_ordered.txt
+
           echo "📄 Extracted SQL files:"
-          cat sorted_sql.txt
-    
-        
+          cat sorted_sql_ordered.txt
 
       - name: Sort SQL Files by Type
         id: sort_sql
         run: |
-          echo "📋 Sorting modified files by type..."
-        
-          grep -i "/TABLES/" modified_sql_files.txt > sorted_sql.txt || true
-          grep -i "/PROCEDURES/" modified_sql_files.txt >> sorted_sql.txt || true
-          grep -i "/VIEWS/" modified_sql_files.txt >> sorted_sql.txt || true
-          grep -i "/TRIGGERS/" modified_sql_files.txt >> sorted_sql.txt || true
-        
+          echo "📋 Sorting SQL files by type..."
+
+          grep -i "/TABLES/" sorted_sql_ordered.txt > sorted_sql_ordered.txt || true
+          grep -i "/PROCEDURES/" sorted_sql_ordered.txt >> sorted_sql_ordered.txt || true
+          grep -i "/VIEWS/" sorted_sql_ordered.txt >> sorted_sql_ordered.txt || true
+          grep -i "/TRIGGERS/" sorted_sql_ordered.txt >> sorted_sql_ordered.txt || true
+
           echo "🔄 Final execution order:"
-          cat sorted_sql.txt
-        
+          cat sorted_sql_ordered.txt
 
       - name: Run Prefect Flow
-        run: python flows/main_flow.py --release-notes sorted_sql.txt
+        run: python flows/main_flow.py --release-notes sorted_sql_ordered.txt
         env:
           SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
           SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}

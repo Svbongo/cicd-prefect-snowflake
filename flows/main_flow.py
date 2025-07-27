@@ -1,5 +1,6 @@
 from prefect import flow, task
 import os
+import argparse
 
 # --- Configurable SQL folder path ---
 SQL_FOLDER = "sql"
@@ -34,7 +35,7 @@ def execute_sql_files(file_paths: list, category: str):
         full_path = os.path.join(SQL_FOLDER, file_path)
         if os.path.exists(full_path):
             print(f"🔹 Executing {full_path}...")
-            # Here, you'd integrate your Snowflake execution logic
+            # Integrate Snowflake execution here
         else:
             print(f"⚠️ File not found: {full_path}")
 
@@ -50,6 +51,8 @@ def main_flow(file_path: str):
 
 # --- CLI runner ---
 if __name__ == "__main__":
-    import sys
-    input_file = sys.argv[1] if len(sys.argv) > 1 else "modified_sql_files.txt"
-    main_flow(input_file)
+    parser = argparse.ArgumentParser(description="Run Prefect SQL deployment flow.")
+    parser.add_argument("--release-notes", required=True, help="Path to sorted SQL file list")
+
+    args = parser.parse_args()
+    main_flow(args.release_notes)
