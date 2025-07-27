@@ -28,17 +28,19 @@ def read_sql_file_list(file_path: str) -> list:
             if not raw_path:
                 continue
 
-            # Extract the tail (e.g., Tables/Customers.sql)
+            # Extract subpath from base dir onward
             for base in base_dirs:
                 if base in raw_path:
                     idx = raw_path.find(base)
-                    trimmed_path = raw_path[idx:]  # Keep only Tables/..., Procedures/..., etc.
-                    normalized_paths.append(trimmed_path)
+                    trimmed = raw_path[idx:]
+                    normalized_paths.append(trimmed)
                     break
             else:
                 print(f"⚠️ Skipping unmatched path: {raw_path}")
 
+    print(f"✅ Final normalized SQL paths: {normalized_paths}")
     return normalized_paths
+
 
 
 @task
