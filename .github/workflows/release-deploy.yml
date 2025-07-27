@@ -25,6 +25,12 @@ jobs:
         run: |
           pip install -r requirements.txt
 
+      - name: Print working directory
+        run: pwd
+
+      - name: List all files
+        run: ls -R
+
       - name: Get Latest Release Tag
         id: get_release
         run: |
@@ -69,4 +75,9 @@ jobs:
           SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
           SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
           SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+        
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
         
