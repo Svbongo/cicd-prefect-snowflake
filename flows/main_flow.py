@@ -54,10 +54,11 @@ def execute_sql_files(sql_file_list: list, file_type: str):
                 with conn.cursor() as cur, open(normalized_path, "r") as f:
                     sql = f.read()
 
+                    # 🚨 For PROCEDURES, execute the full content without splitting
                     if file_type.upper() == "PROCEDURES":
-                        # ✅ Properly execute multi-statement procedure body
-                        cur.execute_string(sql, remove_comments=False)
+                        cur.execute(sql)
                     else:
+                        # Safe for DDL/DML statements (tables, views, triggers)
                         for stmt in sql.strip().split(";"):
                             stmt = stmt.strip()
                             if stmt and not stmt.startswith("--"):
@@ -69,6 +70,7 @@ def execute_sql_files(sql_file_list: list, file_type: str):
     finally:
         conn.close()
         print("✅ Snowflake connection closed.")
+
 
 
 
