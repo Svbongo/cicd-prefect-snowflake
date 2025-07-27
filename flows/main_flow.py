@@ -14,6 +14,7 @@ def get_snowflake_connection():
         warehouse=os.getenv("SNOWFLAKE_WAREHOUSE"),
         database=os.getenv("SNOWFLAKE_DATABASE"),
         schema=os.getenv("SNOWFLAKE_SCHEMA"),
+        autocommit=True  # ✅ Enables commits automatically
     )
 
 @task
@@ -53,6 +54,11 @@ def execute_sql_files(sql_file_list: list):
                 with conn.cursor() as cur, open(normalized_path, "r") as f:
                     sql = f.read()
 
+                    # Log current DB/schema
+                    cur.execute("SELECT CURRENT_DATABASE(), CURRENT_SCHEMA()")
+                    db, schema = cur.fetchone()
+                    print(f"🔍 Using DB: {db} | Schema: {schema}")
+
                     if "create or replace procedure" in sql.lower():
                         print("🧩 Detected stored procedure — executing as single block.")
                         cur.execute(sql)
@@ -69,7 +75,6 @@ def execute_sql_files(sql_file_list: list):
     finally:
         conn.close()
         print("✅ Snowflake connection closed.")
-
 
 @flow(name="main-flow")
 def main_flow(file_path: str):
