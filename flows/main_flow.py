@@ -1,6 +1,7 @@
 from prefect import flow, task
 import os
 import argparse
+from pathlib import Path    
 
 SQL_FOLDER = "sql"
 
