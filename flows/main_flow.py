@@ -3,8 +3,6 @@ import argparse
 import snowflake.connector
 from prefect import flow, task
 
-ORDER = ["TABLES", "VIEWS", "PROCEDURES", "TRIGGERS"]
-
 # 🔁 Connect to Snowflake and execute SQL file
 def execute_sql_file(file_path):
     user = os.environ['SNOWFLAKE_USER']
@@ -58,41 +56,31 @@ def run_sql_file(filepath):
         raise e
 
 
+ORDER = ["TABLES", "VIEWS", "PROCEDURES", "TRIGGERS"]
+
 @flow(name="main-flow")
 def main_flow(release_notes_path="sorted_sql.txt"):
     print(f"📜 Reading SQL file list from: {release_notes_path}")
-
+    
     if not os.path.exists(release_notes_path):
         raise FileNotFoundError(f"{release_notes_path} not found")
 
     with open(release_notes_path, 'r') as f:
-        sql_files = [
-            line.strip().upper()
-            for line in f
-            if line.strip().lower().endswith(".sql")
-        ]
-
-    # 🧾 Log the full list
-    print("🧾 SQL Files Found:")
-    for path in sql_files:
-        print(f" - {path}")
+        sql_files = [line.strip() for line in f if line.strip().endswith(".sql")]
 
     categorized = {key: [] for key in ORDER}
-
     for path in sql_files:
         upper_path = path.upper()
         for category in ORDER:
             if f"/{category}/" in upper_path or f"\\{category}\\" in upper_path:
                 categorized[category].append(path)
 
-    # 🔁 Execute in category order
     for category in ORDER:
-        print(f"\n📂 Category: {category}")
+        print(f"\n📁 Category: {category}")
         if not categorized[category]:
             print("⚠️ No files found")
             continue
         for file_path in categorized[category]:
-            print(f"✅ Will execute: {file_path}")
             run_sql_file(file_path)
 
 
