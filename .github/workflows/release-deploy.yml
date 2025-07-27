@@ -43,13 +43,14 @@ jobs:
           curl -s -H "Authorization: token ${{ secrets.HUB_TOKEN }}" \
             https://api.github.com/repos/${{ github.repository }}/releases/latest \
             | jq -r '.body' \
-            | grep -Eo '([A-Za-z0-9_\-/]+\.sql)' \
+            | grep -Po '[^\s\|]*\.sql' \
             | sed -e 's/|//g' -e 's/\r//g' \
             | sort | uniq \
             > sorted_sql.txt
-
+        
           echo "📄 Extracted SQL files:"
           cat sorted_sql.txt
+        
 
       - name: Sort SQL Files by Type
         id: sort_sql
