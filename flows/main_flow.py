@@ -5,7 +5,7 @@ from prefect import flow, task
 
 ORDER = ["Tables", "Views", "Procedures", "Triggers"]
 
-# 🔁 Previously in utils.snowflake_utils
+# 🔁 Connect to Snowflake and execute SQL file
 def execute_sql_file(file_path):
     user = os.environ['SNOWFLAKE_USER']
     password = os.environ['SNOWFLAKE_PASSWORD']
@@ -28,7 +28,7 @@ def execute_sql_file(file_path):
         with open(file_path, 'r') as f:
             sql_script = f.read()
 
-        # Check for procedure file
+        # 🛠 If it's a procedure, run as one block
         if file_path.lower().endswith(".sql") and "create or replace procedure" in sql_script.lower():
             print(f"⚙️ Executing full procedure file: {file_path}")
             cs.execute(sql_script)
@@ -57,32 +57,41 @@ def run_sql_file(filepath):
         print(f"❌ Error in {filepath}: {e}")
         raise e
 
+
 @flow(name="main-flow")
 def main_flow(release_notes_path="sorted_sql.txt"):
     print(f"📜 Reading SQL file list from: {release_notes_path}")
-    
+
     if not os.path.exists(release_notes_path):
         raise FileNotFoundError(f"{release_notes_path} not found")
 
     with open(release_notes_path, 'r') as f:
-        sql_files = [line.strip() for line in f if line.strip().endswith(".sql")]
+        sql_files = [
+            line.strip().upper()
+            for line in f
+            if line.strip().lower().endswith(".sql")
+        ]
 
-    print(f"🧾 SQL Files Found:\n" + "\n".join(sql_files))
+    # 🧾 Log the full list
+    print("🧾 SQL Files Found:")
+    for path in sql_files:
+        print(f" - {path}")
 
     categorized = {key: [] for key in ORDER}
+
     for path in sql_files:
-        upper_path = path.upper()
         for category in ORDER:
-            if f"/{category.upper()}/" in upper_path or f"\\{category.upper()}\\" in upper_path:
+            if f"/{category.upper()}/" in path or f"\\{category.upper()}\\" in path:
                 categorized[category].append(path)
 
-
+    # 🔁 Execute in category order
     for category in ORDER:
         print(f"\n📂 Category: {category}")
         if not categorized[category]:
             print("⚠️ No files found")
             continue
         for file_path in categorized[category]:
+            print(f"✅ Will execute: {file_path}")
             run_sql_file(file_path)
 
 
@@ -91,6 +100,3 @@ if __name__ == "__main__":
     parser.add_argument("--release-notes", help="Path to sorted SQL file list", default="sorted_sql.txt")
     args = parser.parse_args()
     main_flow(release_notes_path=args.release_notes)
-
-
-
