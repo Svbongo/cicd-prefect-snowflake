@@ -36,10 +36,8 @@ def categorize_sql_files(sql_file_paths: list) -> dict:
             categories["TRIGGERS"].append(path)
     return categories
 
-
 @task
 def execute_sql_files(sql_file_list: list, file_type: str):
-    """Executes SQL files of a specific type against Snowflake."""
     print(f"\n🚀 Executing {file_type.upper()} SQL files...")
     conn = get_snowflake_connection()
 
@@ -56,10 +54,10 @@ def execute_sql_files(sql_file_list: list, file_type: str):
                     sql = f.read()
 
                     if file_type.upper() == "PROCEDURES":
-                        # ✅ Use execute_string() for complex/multi-statement blocks
+                        # Execute entire block for procedure
                         cur.execute_string(sql)
                     else:
-                        # Execute each statement separately
+                        # Execute statements one by one
                         for stmt in sql.strip().split(";"):
                             stmt = stmt.strip()
                             if stmt and not stmt.startswith("--"):
@@ -71,11 +69,9 @@ def execute_sql_files(sql_file_list: list, file_type: str):
     finally:
         conn.close()
         print("✅ Snowflake connection closed.")
-
 
 @flow(name="main-flow")
 def main_flow(sql_file_list: list, file_type: str):
-    """Executes SQL files of a specific type against Snowflake."""
     print(f"\n🚀 Executing {file_type.upper()} SQL files...")
     conn = get_snowflake_connection()
 
@@ -92,10 +88,8 @@ def main_flow(sql_file_list: list, file_type: str):
                     sql = f.read()
 
                     if file_type.upper() == "PROCEDURES":
-                        # Execute the entire content as a single block
                         cur.execute_string(sql)
                     else:
-                        # Execute statements one by one (for DDL, DML, etc.)
                         for stmt in sql.strip().split(";"):
                             stmt = stmt.strip()
                             if stmt and not stmt.startswith("--"):
@@ -107,7 +101,6 @@ def main_flow(sql_file_list: list, file_type: str):
     finally:
         conn.close()
         print("✅ Snowflake connection closed.")
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -116,4 +109,27 @@ if __name__ == "__main__":
         help="Path to the sorted SQL file list"
     )
     args = parser.parse_args()
-    main_flow(args.release_notes)
+
+    # Load file list
+    file_list = read_sql_file_list.fn(args.release_notes)
+
+    if not file_list:
+        print("❌ No SQL files found in the release notes.")
+        exit(1)
+
+    # Infer file_type from path of the first file
+    upper_path = file_list[0].upper()
+    if "PROCEDURES" in upper_path:
+        file_type = "PROCEDURES"
+    elif "TABLES" in upper_path:
+        file_type = "TABLES"
+    elif "VIEWS" in upper_path:
+        file_type = "VIEWS"
+    elif "TRIGGERS" in upper_path:
+        file_type = "TRIGGERS"
+    else:
+        print("❌ Could not infer file type from file path.")
+        exit(1)
+
+    # Run the Prefect flow
+    main_flow(sql_file_list=file_list, file_type=file_type)
