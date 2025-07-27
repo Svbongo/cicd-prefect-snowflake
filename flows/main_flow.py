@@ -67,11 +67,15 @@ def main_flow(release_notes_path="sorted_sql.txt"):
     with open(release_notes_path, 'r') as f:
         sql_files = [line.strip() for line in f if line.strip().endswith(".sql")]
 
+    print(f"🧾 SQL Files Found:\n" + "\n".join(sql_files))
+
     categorized = {key: [] for key in ORDER}
     for path in sql_files:
+        upper_path = path.upper()
         for category in ORDER:
-            if f"/{category}/" in path or f"\\{category}\\" in path:
+            if f"/{category.upper()}/" in upper_path or f"\\{category.upper()}\\" in upper_path:
                 categorized[category].append(path)
+
 
     for category in ORDER:
         print(f"\n📂 Category: {category}")
@@ -89,8 +93,4 @@ if __name__ == "__main__":
     main_flow(release_notes_path=args.release_notes)
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--release-notes", help="Path to release_notes.md", default="release_notes.md")
-    args = parser.parse_args()
-    main_flow(release_notes_path=args.release_notes)
+
