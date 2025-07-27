@@ -1,91 +1,86 @@
 from prefect import flow, task
-import os
-import snowflake.connector
+from pathlib import Path
 
-# 🔌 Connect to Snowflake
-def get_snowflake_connection():
-    return snowflake.connector.connect(
-        user=os.getenv("SNOWFLAKE_USER"),
-        password=os.getenv("SNOWFLAKE_PASSWORD"),
-        account=os.getenv("SNOWFLAKE_ACCOUNT"),
-        warehouse=os.getenv("SNOWFLAKE_WAREHOUSE"),
-        database=os.getenv("SNOWFLAKE_DATABASE"),
-        schema=os.getenv("SNOWFLAKE_SCHEMA"),
-        role=os.getenv("SNOWFLAKE_ROLE")
-    )
+# File paths
+MODIFIED_SQL_FILE = "modified_sql_files.txt"
+SORTED_SQL_FILE = "sorted_sql.txt"
+
+# Category mapping
+CATEGORIES = {
+    "tables": "TABLES",
+    "views": "VIEWS",
+    "procedures": "PROCEDURES",
+    "triggers": "TRIGGERS"
+}
 
 @task
-def read_sql_file_list(file_path):
+def read_sql_file_list(file_path: str) -> list:
     with open(file_path, "r") as f:
         return [line.strip() for line in f if line.strip()]
 
 @task
-def categorize_sql_files(sql_files):
-    categories = {
+def categorize_sql_files(paths: list) -> dict:
+    categorized = {
         "TABLES": [],
         "VIEWS": [],
         "PROCEDURES": [],
-        "TRIGGERS": []
+        "TRIGGERS": [],
+        "OTHERS": []
     }
 
-    for path in sql_files:
-        parts = path.upper().split('/')
+    for raw_path in paths:
+        lower_path = raw_path.lower()
+        path_obj = Path(raw_path)
         matched = False
-        for part in parts:
-            if part in categories:
-                categories[part].append(path)
+
+        for keyword, category in CATEGORIES.items():
+            if keyword in lower_path:
+                categorized[category].append(str(path_obj))
                 matched = True
                 break
+
         if not matched:
-            print(f"⚠️ Unrecognized path (skipped): {path}")
+            categorized["OTHERS"].append(str(path_obj))
 
-    for category, files in categories.items():
-        print(f"\n📂 Category: {category}")
-        if not files:
-            print("⚠️ No files found")
-        else:
-            for f in files:
-                print(f"  └─ {f}")
-
-    return categories
+    return categorized
 
 @task
-def execute_sql_file(file_path):
-    try:
-        with open(file_path, "r") as f:
-            sql = f.read()
-
-        conn = get_snowflake_connection()
-        cursor = conn.cursor()
-        cursor.execute(sql)
-        print(f"✅ Executed: {file_path}")
-        cursor.close()
-        conn.close()
-
-    except Exception as e:
-        print(f"❌ Failed: {file_path}")
-        print(f"    Reason: {e}")
+def write_sorted_paths(categorized: dict, output_path: str):
+    final_order = (
+        categorized["TABLES"] +
+        categorized["VIEWS"] +
+        categorized["PROCEDURES"] +
+        categorized["TRIGGERS"] +
+        categorized["OTHERS"]
+    )
+    with open(output_path, "w") as f:
+        for p in final_order:
+            f.write(p + "\n")
+    print(f"✅ Sorted SQL paths written to: {output_path}")
 
 @flow(name="main-flow")
-def main_flow(release_notes: str):
-    print(f"📖 Reading SQL file list from: {release_notes}")
-    sql_files = read_sql_file_list(release_notes)
-    print(f"📂 SQL Files from {release_notes}:\n" + "\n".join(sql_files))
+def main_flow():
+    print(f"📖 Reading SQL file list from: {MODIFIED_SQL_FILE}")
+    paths = read_sql_file_list(MODIFIED_SQL_FILE)
 
-    categories = categorize_sql_files(sql_files)
+    print("📂 SQL Files from modified_sql_files.txt:")
+    for path in paths:
+        print("  └─", path)
 
-    for category in ["TABLES", "VIEWS", "PROCEDURES", "TRIGGERS"]:
-        print(f"\n🚀 Executing {category} SQL files...")
-        for path in categories.get(category, []):
-            if os.path.isfile(path):
-                execute_sql_file(path)
-            else:
-                print(f"⚠️ Skipped missing file: {path}")
+    categorized = categorize_sql_files(paths)
 
-# 🏁 Entrypoint
+    for category, files in categorized.items():
+        print(f"\n📂 Category: {category}")
+        if files:
+            for f in files:
+                print("  └─", f)
+        else:
+            print("⚠️ No files found")
+
+    write_sorted_paths(categorized, SORTED_SQL_FILE)
+
+    print("\n🚀 Proceeding to execution using sorted_sql.txt...")
+    # You can call another function here to execute the sorted files if needed
+
 if __name__ == "__main__":
-    import sys
-    if len(sys.argv) < 3 or sys.argv[1] not in ["--release-notes"]:
-        print("Usage: python main_flow.py --release-notes sorted_sql.txt")
-        sys.exit(1)
-    main_flow(sys.argv[2])
+    main_flow()
