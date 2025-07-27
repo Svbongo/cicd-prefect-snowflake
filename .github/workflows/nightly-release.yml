@@ -31,38 +31,42 @@ jobs:
         id: detect_sqls
         run: |
           echo "🧠 Detecting new/modified .sql files between main and cicd-sql-release HEAD..."
-
-          # Step 1: Generate raw git diff
+      
           git fetch origin main
           git diff --name-status origin/main...HEAD > raw_diff.txt
-
-          # Step 2: Extract only added/modified/renamed .sql files (case-insensitive match)
+      
+          # Extract paths for added, modified, or renamed files only
           grep -Ei '\.sql$' raw_diff.txt | awk '$1 ~ /^(A|M|R100)$/ { print $2 }' > raw_sql_changes.txt || touch raw_sql_changes.txt
-
-          # Step 3: Normalize filenames to UPPERCASE (optional)
-          awk '{ print toupper($1) }' raw_sql_changes.txt | sort | uniq > sql_files.txt || touch sql_files.txt
-
-          # Step 4: Debug info
-          echo "📂 Final detected SQL files:"
-          cat sql_files.txt
+      
+          # Filter and sort SQL paths into a consistent execution order
+          grep -i 'Tables/' raw_sql_changes.txt | sort > TABLES.txt
+          grep -i 'Procedures/' raw_sql_changes.txt | sort > PROCEDURES.txt
+          grep -i 'Views/' raw_sql_changes.txt | sort > VIEWS.txt
+          grep -i 'Triggers/' raw_sql_changes.txt | sort > TRIGGERS.txt
+      
+          # Concatenate sorted files into final sorted list
+          cat TABLES.txt PROCEDURES.txt VIEWS.txt TRIGGERS.txt > sorted_sql.txt
+      
+          echo "✅ Sorted SQL file execution order:"
+          cat sorted_sql.txt
+      
 
       - name: Debug detected files
         run: |
           echo "🧾 SQL files detected:"
-          cat sql_files.txt || echo "❌ None found"
+          cat sorted_sql.txt || echo "❌ None found"
 
-      - name: Create release notes and sorted_sql.txt
-        run: |
-          echo "📝 Modified SQL Files:" > release_notes.md
-          if [ -s sql_files.txt ]; then
-            while read file; do
-              echo "- $file" >> release_notes.md
-              echo "$file" >> sorted_sql.txt    # ✅ Clean format for Prefect
-            done < sql_files.txt
-          else
-            echo "- No SQL files found" >> release_notes.md
-            touch sorted_sql.txt
-          fi
+          - name: Create release notes and attach sorted_sql.txt
+          run: |
+            echo "📝 Modified SQL Files:" > release_notes.md
+            if [ -s sorted_sql.txt ]; then
+              while read file; do
+                echo "- $file" >> release_notes.md
+              done < sorted_sql.txt
+            else
+              echo "- No SQL files found" >> release_notes.md
+            fi
+        
 
       - name: Generate unique nightly tag
         id: generate_tag
