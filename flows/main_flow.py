@@ -4,10 +4,8 @@ from pathlib import Path
 import os
 import snowflake.connector
 
-# Root directory of the repo
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
-# ✅ Function to get a fresh Snowflake connection
 def get_snowflake_connection():
     return snowflake.connector.connect(
         user=os.getenv("SNOWFLAKE_USER"),
@@ -20,13 +18,11 @@ def get_snowflake_connection():
 
 @task
 def read_sql_file_list(file_path: str) -> list:
-    """Reads SQL file list from the release notes or sorted file."""
     with open(file_path, "r") as f:
         return [line.strip() for line in f if line.strip()]
 
 @task
 def categorize_sql_files(sql_file_paths: list) -> dict:
-    """Categorizes SQL file paths into TABLES, VIEWS, PROCEDURES, TRIGGERS."""
     categories = {"TABLES": [], "VIEWS": [], "PROCEDURES": [], "TRIGGERS": []}
     for path in sql_file_paths:
         upper_path = path.upper()
@@ -42,7 +38,6 @@ def categorize_sql_files(sql_file_paths: list) -> dict:
 
 @task
 def execute_sql_files(sql_file_list: list, file_type: str):
-    """Executes SQL files of a specific type against Snowflake."""
     print(f"\n🚀 Executing {file_type.upper()} SQL files...")
     conn = get_snowflake_connection()
 
@@ -58,42 +53,10 @@ def execute_sql_files(sql_file_list: list, file_type: str):
                 with conn.cursor() as cur, open(normalized_path, "r") as f:
                     sql = f.read()
 
-                    # Split by semicolon, ignore blank or comment lines
-                    for stmt in sql.strip().split(";"):
-                        stmt = stmt.strip()
-                        if stmt and not stmt.startswith("--"):
-                            cur.execute(stmt)
-
-                print(f"✅ Success: {sql_file}")
-            except Exception as e:
-                print(f"❌ Error in {sql_file}: {e}")
-    finally:
-        conn.close()
-        print("✅ Snowflake connection closed.")
-
-@flow(name="main-flow")
-def main_flow(sql_file_list: list, file_type: str):
-    """Executes SQL files of a specific type against Snowflake."""
-    print(f"\n🚀 Executing {file_type.upper()} SQL files...")
-    conn = get_snowflake_connection()
-
-    try:
-        for sql_file in sql_file_list:
-            normalized_path = ROOT_DIR / sql_file
-            if not normalized_path.exists():
-                print(f"⚠️ File not found: {normalized_path}")
-                continue
-
-            print(f"📂 Running: {sql_file}")
-            try:
-                with conn.cursor() as cur, open(normalized_path, "r") as f:
-                    sql = f.read()
-
-                    # Use execute_string() for PROCEDURES (multi-statement support)
+                    # PROCEDURES = multi-statement block
                     if file_type.upper() == "PROCEDURES":
                         cur.execute_string(sql)
                     else:
-                        # Execute each statement separately for other types
                         for stmt in sql.strip().split(";"):
                             stmt = stmt.strip()
                             if stmt and not stmt.startswith("--"):
@@ -106,6 +69,15 @@ def main_flow(sql_file_list: list, file_type: str):
         conn.close()
         print("✅ Snowflake connection closed.")
 
+# ✅ Corrected main flow entrypoint
+@flow(name="main-flow")
+def main_flow(file_path: str):
+    sql_paths = read_sql_file_list(file_path)
+    categorized = categorize_sql_files(sql_paths)
+
+    for file_type, files in categorized.items():
+        if files:
+            execute_sql_files(files, file_type)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
