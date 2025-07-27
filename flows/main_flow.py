@@ -72,13 +72,40 @@ def execute_sql_files(sql_file_list: list, file_type: str):
         print("✅ Snowflake connection closed.")
 
 @flow(name="main-flow")
-def main_flow(file_path: str):
-    sql_paths = read_sql_file_list(file_path)
-    categorized = categorize_sql_files(sql_paths)
+def main_flow(sql_file_list: list, file_type: str):
+    """Executes SQL files of a specific type against Snowflake."""
+    print(f"\n🚀 Executing {file_type.upper()} SQL files...")
+    conn = get_snowflake_connection()
 
-    for file_type, files in categorized.items():
-        if files:
-            execute_sql_files(files, file_type)
+    try:
+        for sql_file in sql_file_list:
+            normalized_path = ROOT_DIR / sql_file
+            if not normalized_path.exists():
+                print(f"⚠️ File not found: {normalized_path}")
+                continue
+
+            print(f"📂 Running: {sql_file}")
+            try:
+                with conn.cursor() as cur, open(normalized_path, "r") as f:
+                    sql = f.read()
+
+                    # Use execute_string() for PROCEDURES (multi-statement support)
+                    if file_type.upper() == "PROCEDURES":
+                        cur.execute_string(sql)
+                    else:
+                        # Execute each statement separately for other types
+                        for stmt in sql.strip().split(";"):
+                            stmt = stmt.strip()
+                            if stmt and not stmt.startswith("--"):
+                                cur.execute(stmt)
+
+                print(f"✅ Success: {sql_file}")
+            except Exception as e:
+                print(f"❌ Error in {sql_file}: {e}")
+    finally:
+        conn.close()
+        print("✅ Snowflake connection closed.")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
