@@ -68,11 +68,15 @@ def main_flow(release_notes_path="sorted_sql.txt"):
     with open(release_notes_path, 'r') as f:
         sql_files = [line.strip() for line in f if line.strip().endswith(".sql")]
 
+    print("📄 SQL Files from sorted_sql.txt:")
+    for f in sql_files:
+        print(f"  - {f}")
+
     categorized = {key: [] for key in ORDER}
     for path in sql_files:
-        upper_path = path.upper()
+        upper_path = os.path.normpath(path).upper()
         for category in ORDER:
-            if f"/{category}/" in upper_path or f"\\{category}\\" in upper_path:
+            if f"{os.sep}{category}{os.sep}" in upper_path:
                 categorized[category].append(path)
 
     for category in ORDER:
@@ -80,7 +84,9 @@ def main_flow(release_notes_path="sorted_sql.txt"):
         if not categorized[category]:
             print("⚠️ No files found")
             continue
+        print(f"✅ Found {len(categorized[category])} files")
         for file_path in categorized[category]:
+            print(f"  ➤ {file_path}")
             run_sql_file(file_path)
 
 
