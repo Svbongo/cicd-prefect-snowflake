@@ -49,10 +49,12 @@ jobs:
         run: |
           echo "📋 Sorting SQL files by type..."
 
-          grep -i "/TABLES/" sorted_sql_ordered.txt > sorted_sql_ordered.txt || true
-          grep -i "/PROCEDURES/" sorted_sql_ordered.txt >> sorted_sql_ordered.txt || true
-          grep -i "/VIEWS/" sorted_sql_ordered.txt >> sorted_sql_ordered.txt || true
-          grep -i "/TRIGGERS/" sorted_sql_ordered.txt >> sorted_sql_ordered.txt || true
+          grep -i "/TABLES/" sorted_sql_ordered.txt > tmp_sql_ordered.txt || true
+          grep -i "/PROCEDURES/" sorted_sql_ordered.txt >> tmp_sql_ordered.txt || true
+          grep -i "/VIEWS/" sorted_sql_ordered.txt >> tmp_sql_ordered.txt || true
+          grep -i "/TRIGGERS/" sorted_sql_ordered.txt >> tmp_sql_ordered.txt || true
+
+          mv tmp_sql_ordered.txt sorted_sql_ordered.txt
 
           echo "🔄 Final execution order:"
           cat sorted_sql_ordered.txt
