@@ -31,41 +31,37 @@ jobs:
         id: detect_sqls
         run: |
           echo "🧠 Detecting new/modified .sql files between main and cicd-sql-release HEAD..."
-      
+
           # Step 1: Generate raw git diff
           git fetch origin main
           git diff --name-status origin/main...HEAD > raw_diff.txt
-      
+
           # Step 2: Extract only added/modified/renamed .sql files (case-insensitive match)
           grep -Ei '\.sql$' raw_diff.txt | awk '$1 ~ /^(A|M|R100)$/ { print $2 }' > raw_sql_changes.txt || touch raw_sql_changes.txt
-      
-          # Step 3: Normalize filenames to UPPERCASE (cross-platform safe)
+
+          # Step 3: Normalize filenames to UPPERCASE (optional)
           awk '{ print toupper($1) }' raw_sql_changes.txt | sort | uniq > sql_files.txt || touch sql_files.txt
-      
-          # Step 4: Save output to GitHub Actions output block
-          echo "sql_files<<EOF" >> $GITHUB_OUTPUT
-          cat sql_files.txt >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-      
-          # Debug info
+
+          # Step 4: Debug info
           echo "📂 Final detected SQL files:"
           cat sql_files.txt
-      
 
       - name: Debug detected files
         run: |
           echo "🧾 SQL files detected:"
           cat sql_files.txt || echo "❌ None found"
 
-      - name: Create release notes
+      - name: Create release notes and sorted_sql.txt
         run: |
           echo "📝 Modified SQL Files:" > release_notes.md
           if [ -s sql_files.txt ]; then
-            cat sql_files.txt | while read file; do
+            while read file; do
               echo "- $file" >> release_notes.md
-            done
+              echo "$file" >> sorted_sql.txt    # ✅ Clean format for Prefect
+            done < sql_files.txt
           else
             echo "- No SQL files found" >> release_notes.md
+            touch sorted_sql.txt
           fi
 
       - name: Generate unique nightly tag
@@ -88,6 +84,7 @@ jobs:
             --title "Nightly SQL Release - $(date '+%Y-%m-%d %H:%M:%S')" \
             --notes-file release_notes.md \
             --target cicd-sql-release \
-            --latest
+            --latest \
+            sorted_sql.txt release_notes.md   # ✅ Attach files
         env:
           GH_TOKEN: ${{ secrets.HUB_TOKEN }}
