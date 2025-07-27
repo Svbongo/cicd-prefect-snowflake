@@ -19,8 +19,27 @@ def get_snowflake_connection():
 
 @task
 def read_sql_file_list(file_path: str) -> list:
+    base_dirs = ["Tables", "Views", "Procedures", "Triggers"]
+    normalized_paths = []
+
     with open(file_path, "r") as f:
-        return [line.strip() for line in f if line.strip()]
+        for line in f:
+            raw_path = line.strip()
+            if not raw_path:
+                continue
+
+            # Extract the tail (e.g., Tables/Customers.sql)
+            for base in base_dirs:
+                if base in raw_path:
+                    idx = raw_path.find(base)
+                    trimmed_path = raw_path[idx:]  # Keep only Tables/..., Procedures/..., etc.
+                    normalized_paths.append(trimmed_path)
+                    break
+            else:
+                print(f"⚠️ Skipping unmatched path: {raw_path}")
+
+    return normalized_paths
+
 
 @task
 def categorize_sql_files(sql_file_paths: list) -> dict:
@@ -39,6 +58,7 @@ def categorize_sql_files(sql_file_paths: list) -> dict:
 
 @task
 def execute_sql_files(sql_file_list: list):
+    """Executes SQL files against Snowflake."""
     conn = get_snowflake_connection()
 
     try:
@@ -53,30 +73,27 @@ def execute_sql_files(sql_file_list: list):
                 with conn.cursor() as cur, open(normalized_path, "r") as f:
                     sql = f.read()
 
-                    # Execute USE statements directly if present
-                    for line in sql.splitlines():
-                        line_clean = line.strip().lower()
-                        if line_clean.startswith("use database"):
-                            print(f"🧭 Setting DB: {line.strip()}")
-                            cur.execute(line.strip())
-                        elif line_clean.startswith("use schema"):
-                            print(f"📂 Setting Schema: {line.strip()}")
-                            cur.execute(line.strip())
+                    # Log current DB/schema
+                    cur.execute("SELECT CURRENT_DATABASE(), CURRENT_SCHEMA()")
+                    db, schema = cur.fetchone()
+                    print(f"🔍 Using DB: {db} | Schema: {schema}")
 
-                    # Now re-split remaining statements and execute
-                    statements = [stmt.strip() for stmt in sql.strip().split(";") if stmt.strip()]
-                    for idx, stmt in enumerate(statements):
-                        if not stmt.lower().startswith("use") and not stmt.startswith("--"):
-                            print(f"🔹 Executing statement {idx+1}: {stmt[:60]}...")
-                            cur.execute(stmt)
+                    if "create or replace procedure" in sql.lower():
+                        print("🧩 Detected stored procedure — executing as single block.")
+                        cur.execute(sql)
+                    else:
+                        statements = [stmt.strip() for stmt in sql.strip().split(";") if stmt.strip()]
+                        for idx, stmt in enumerate(statements):
+                            if not stmt.startswith("--"):
+                                print(f"🔹 Executing statement {idx+1}: {stmt[:60]}...")
+                                cur.execute(stmt)
 
-                    print(f"✅ Success: {sql_file}")
+                print(f"✅ Success: {sql_file}")
             except Exception as e:
                 print(f"❌ Error in {sql_file}:\n{e}")
     finally:
         conn.close()
         print("✅ Snowflake connection closed.")
-
 
 @flow(name="main-flow")
 def main_flow(file_path: str):
