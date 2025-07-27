@@ -48,28 +48,28 @@ def execute_sql_files(sql_file_list: list):
                 print(f"⚠️ File not found: {normalized_path}")
                 continue
 
-            print(f"📂 Running: {sql_file}")
+            print(f"\n📂 Running: {sql_file}")
             try:
                 with conn.cursor() as cur, open(normalized_path, "r") as f:
                     sql = f.read()
 
-                    # Execute full file if it's a procedure
                     if "create or replace procedure" in sql.lower():
                         print("🧩 Detected stored procedure — executing as single block.")
                         cur.execute(sql)
                     else:
-                        # Execute statements one-by-one
-                        for stmt in sql.strip().split(";"):
-                            stmt = stmt.strip()
-                            if stmt and not stmt.startswith("--"):
+                        statements = [stmt.strip() for stmt in sql.strip().split(";") if stmt.strip()]
+                        for idx, stmt in enumerate(statements):
+                            if not stmt.startswith("--"):
+                                print(f"🔹 Executing statement {idx+1}: {stmt[:60]}...")
                                 cur.execute(stmt)
 
                 print(f"✅ Success: {sql_file}")
             except Exception as e:
-                print(f"❌ Error in {sql_file}: {e}")
+                print(f"❌ Error in {sql_file}:\n{e}")
     finally:
         conn.close()
         print("✅ Snowflake connection closed.")
+
 
 @flow(name="main-flow")
 def main_flow(file_path: str):
