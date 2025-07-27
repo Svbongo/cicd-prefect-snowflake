@@ -1,97 +1,64 @@
-import os
-import argparse
-import snowflake.connector
 from prefect import flow, task
-
-# 🔁 Connect to Snowflake and execute SQL file
-def execute_sql_file(file_path):
-    user = os.environ['SNOWFLAKE_USER']
-    password = os.environ['SNOWFLAKE_PASSWORD']
-    account = os.environ['SNOWFLAKE_ACCOUNT']
-    database = os.environ['SNOWFLAKE_DATABASE']
-    schema = os.environ['SNOWFLAKE_SCHEMA']
-    warehouse = os.environ['SNOWFLAKE_WAREHOUSE']
-
-    ctx = snowflake.connector.connect(
-        user=user,
-        password=password,
-        account=account,
-        warehouse=warehouse,
-        database=database,
-        schema=schema
-    )
-    cs = ctx.cursor()
-
-    try:
-        with open(file_path, 'r') as f:
-            sql_script = f.read()
-
-        # 🛠 If it's a procedure, run as one block
-        if file_path.lower().endswith(".sql") and "create or replace procedure" in sql_script.lower():
-            print(f"⚙️ Executing full procedure file: {file_path}")
-            cs.execute(sql_script)
-        else:
-            print(f"📄 Executing statements from: {file_path}")
-            statements = [stmt.strip() for stmt in sql_script.split(';') if stmt.strip()]
-            for stmt in statements:
-                print(f"➡️ {stmt[:60]}{'...' if len(stmt) > 60 else ''}")
-                cs.execute(stmt)
-
-    except Exception as e:
-        print(f"❌ Failed: {e}")
-        raise e
-    finally:
-        cs.close()
-        ctx.close()
-
+import os
 
 @task
-def run_sql_file(filepath):
-    print(f"📄 Executing: {filepath}")
-    try:
-        execute_sql_file(filepath)
-        print(f"✅ Done: {filepath}")
-    except Exception as e:
-        print(f"❌ Error in {filepath}: {e}")
-        raise e
+def read_sql_file_list(file_path):
+    print(f"📖 Reading SQL file list from: {file_path}")
+    with open(file_path, 'r') as file:
+        sql_files = [line.strip() for line in file if line.strip()]
+    print(f"📂 SQL Files from {file_path}:")
+    for sql in sql_files:
+        print(sql)
+    return sql_files
 
+@task
+def categorize_sql_files(sql_files):
+    categories = {
+        "TABLES": [],
+        "VIEWS": [],
+        "PROCEDURES": [],
+        "TRIGGERS": []
+    }
 
-ORDER = ["TABLES", "VIEWS", "PROCEDURES", "TRIGGERS"]
+    for path in sql_files:
+        path_upper = path.upper()
+        if "TABLES" in path_upper:
+            categories["TABLES"].append(path)
+        elif "VIEWS" in path_upper:
+            categories["VIEWS"].append(path)
+        elif "PROCEDURES" in path_upper:
+            categories["PROCEDURES"].append(path)
+        elif "TRIGGERS" in path_upper:
+            categories["TRIGGERS"].append(path)
+        else:
+            print(f"⚠️ Unrecognized path (skipped): {path}")
+
+    for category, files in categories.items():
+        print(f"\n📂 Category: {category}")
+        if not files:
+            print("⚠️ No files found")
+        else:
+            for f in files:
+                print(f"  └─ {f}")
+
+    return categories
 
 @flow(name="main-flow")
-def main_flow(release_notes_path="sorted_sql.txt"):
-    print(f"📜 Reading SQL file list from: {release_notes_path}")
-    
-    if not os.path.exists(release_notes_path):
-        raise FileNotFoundError(f"{release_notes_path} not found")
-
-    with open(release_notes_path, 'r') as f:
-        sql_files = [line.strip() for line in f if line.strip().endswith(".sql")]
-
-    print("📄 SQL Files from sorted_sql.txt:")
-    for f in sql_files:
-        print(f"  - {f}")
-
-    categorized = {key: [] for key in ORDER}
-    for path in sql_files:
-        upper_path = os.path.normpath(path).upper()
-        for category in ORDER:
-            if f"{os.sep}{category}{os.sep}" in upper_path:
-                categorized[category].append(path)
-
-    for category in ORDER:
-        print(f"\n📁 Category: {category}")
-        if not categorized[category]:
-            print("⚠️ No files found")
-            continue
-        print(f"✅ Found {len(categorized[category])} files")
-        for file_path in categorized[category]:
-            print(f"  ➤ {file_path}")
-            run_sql_file(file_path)
-
+def main_flow(release_notes: str = "sorted_sql.txt"):
+    sql_files = read_sql_file_list(release_notes)
+    categorized_files = categorize_sql_files(sql_files)
+    # You can now pass `categorized_files` into your execution logic
+    return categorized_files
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--release-notes", help="Path to sorted SQL file list", default="sorted_sql.txt")
-    args = parser.parse_args()
-    main_flow(release_notes_path=args.release_notes)
+    import sys
+    if len(sys.argv) < 2:
+        print("❌ Usage: python main_flow.py --release-notes <path_to_sorted_sql.txt>")
+        sys.exit(1)
+
+    release_notes_path = sys.argv[2] if sys.argv[1] == "--release-notes" else None
+    if not release_notes_path or not os.path.exists(release_notes_path):
+        print(f"❌ Invalid or missing release notes file: {release_notes_path}")
+        sys.exit(1)
+
+    main_flow(release_notes_path)
