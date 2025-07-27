@@ -10,7 +10,16 @@ SQL_FOLDER = "."  # or "" to treat paths as relative from repo root
 @task
 def read_sql_file_list(file_path: str) -> list:
     with open(file_path, "r") as f:
-        return [line.strip() for line in f if line.strip()]
+        lines = [line.strip() for line in f if line.strip()]
+        normalized = []
+        for line in lines:
+            parts = line.upper().split('/')
+            # Extract only the last two segments, e.g., TABLES/CUSTOMERS.SQL
+            if len(parts) >= 2:
+                normalized_path = os.path.join(parts[-2], parts[-1])
+                normalized.append(normalized_path)
+        return normalized
+
 
 # --- Task to categorize SQL files by type ---
 @task
