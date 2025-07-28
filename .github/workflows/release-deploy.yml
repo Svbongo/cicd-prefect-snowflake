@@ -1,9 +1,9 @@
 name: Deploy SQL to Snowflake
 
 on:
-    release:
-      types: [published]
-    workflow_dispatch:
+  release:
+    types: [published]
+  workflow_dispatch:
 
 jobs:
   deploy-sql:
@@ -25,6 +25,12 @@ jobs:
         run: |
           pip install -r requirements.txt
 
+      - name: Print working directory
+        run: pwd
+
+      - name: List all files
+        run: ls -R
+
       - name: Get Latest Release Tag
         id: get_release
         run: |
@@ -35,26 +41,16 @@ jobs:
         id: extract_sql
         run: |
           curl -s -H "Authorization: token ${{ secrets.HUB_TOKEN }}" \
-          https://api.github.com/repos/${{ github.repository }}/releases/tags/${RELEASE_TAG} \
-          | jq -r '.body' > release_notes.md
-
-          echo "📝 Extracting modified SQL files:"
-          grep -oP 'Snowflake/[^\s]*\.sql' release_notes.md > modified_sql_files.txt || true
-          cat modified_sql_files.txt
-
-      - name: Sort SQL Files by Type
-        id: sort_sql
-        run: |
-          echo "📋 Sorting modified files by type..."
-
-          grep "/Tables/" modified_sql_files.txt > sorted_sql.txt || true
-          grep "/Procedures/" modified_sql_files.txt >> sorted_sql.txt || true
-          grep "/Views/" modified_sql_files.txt >> sorted_sql.txt || true
-          grep "/Triggers/" modified_sql_files.txt >> sorted_sql.txt || true
-
-          echo "🔄 Final execution order:"
+            https://api.github.com/repos/${{ github.repository }}/releases/latest \
+            | jq -r '.body' \
+            | grep -Po '[^\s\|]*\.sql' \
+            | sed -e 's/|//g' -e 's/\r//g' \
+            | sort | uniq \
+            > sorted_sql.txt
+        
+          echo "📄 Extracted SQL files:"
           cat sorted_sql.txt
-
+        
       - name: Run Prefect Flow
         run: python flows/main_flow.py --release-notes sorted_sql.txt
         env:
@@ -65,4 +61,3 @@ jobs:
           SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
           SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
           SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-        
