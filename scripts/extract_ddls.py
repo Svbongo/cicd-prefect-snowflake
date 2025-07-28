@@ -73,7 +73,6 @@ def export_ddl(schema, object_key, name):
         full_name += "()"  # Required for procedures
 
     try:
-        # Write DDL
         cursor.execute(f"SELECT GET_DDL('{snowflake_type}', '{full_name}')")
         ddl = cursor.fetchone()[0]
 
@@ -81,28 +80,9 @@ def export_ddl(schema, object_key, name):
             f.write(ddl + ";\n\n")
 
         print(f"✅ Exported {snowflake_type} {full_name}")
-
-        # Write INSERTs for TABLES only
-        if object_key == "TABLES":
-            cursor.execute(f"SELECT * FROM {SNOWFLAKE_DATABASE}.{schema}.{name}")
-            rows = cursor.fetchall()
-            columns = [desc[0] for desc in cursor.description]
-
-            with open(file_path, "a") as f:
-                for row in rows:
-                    values = []
-                    for val in row:
-                        if val is None:
-                            values.append('NULL')
-                        elif isinstance(val, str):
-                            escaped = val.replace("'", "''")
-                            values.append("'{}'".format(escaped))
-                        else:
-                            values.append(str(val))
-                    insert_stmt = f"INSERT INTO {name} ({', '.join(columns)}) VALUES ({', '.join(values)});\n"
-                    f.write(insert_stmt)
     except Exception as e:
         print(f"❌ Failed to export {snowflake_type} {full_name}: {e}")
+
 def main():
     for schema in get_schemas():
         print(f"\n🔍 Processing schema: {schema}")
