@@ -1,0 +1,50 @@
+name: Sync Snowflake DDLs and Data
+
+on:
+  workflow_dispatch:
+
+jobs:
+  extract-ddls:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: ✅ Checkout Repository
+      uses: actions/checkout@v3
+
+    - name: 🔧 Configure Git Identity
+      run: |
+        git config --global user.name "GitHub Actions Bot"
+        git config --global user.email "actions@github.com"
+
+    - name: 🐍 Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: 📦 Install Python Dependencies
+      run: |
+        pip install -r requirements.txt
+
+    - name: 🏗️ Run Snowflake DDL and Data Extractor
+      env:
+        SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+        SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+        SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+        SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+        SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+        SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+        HUB_TOKEN: ${{ secrets.HUB_TOKEN }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+      run: |
+        python scripts/extract_ddls.py
+
+    - name: Push Changes to GitHub
+      env:
+        HUB_TOKEN: ${{ secrets.HUB_TOKEN }}
+      run: |
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+        git add .
+        git diff-index --quiet HEAD || git commit -m "Auto-sync: Snowflake DDLs and Data"
+        git push https://x-access-token:${HUB_TOKEN}@github.com/${{ github.repository }}.git HEAD:main
+      
