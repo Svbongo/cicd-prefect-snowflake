@@ -1,7 +1,7 @@
 name: Nightly SQL Release
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # ⛔ No branches here
   schedule:
     - cron: '0 6 * * *'  # 2AM EST (6AM UTC)
 
@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   nightly-sql-release:
+    if: github.ref == 'refs/heads/cicd-sql-release'
     runs-on: ubuntu-latest
 
     steps:
