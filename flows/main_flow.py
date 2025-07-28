@@ -1,96 +1,104 @@
-import os
-import argparse
-import snowflake.connector
 from prefect import flow, task
+from pathlib import Path
+import os
+import snowflake.connector
 
-ORDER = ["Tables", "Views", "Procedures", "Triggers"]
+# Adjust to the root of your repo where 'Snowflake/...' exists
+ROOT_DIR = Path(__file__).resolve().parent.parent
 
-# 🔁 Previously in utils.snowflake_utils
-def execute_sql_file(file_path):
-    user = os.environ['SNOWFLAKE_USER']
-    password = os.environ['SNOWFLAKE_PASSWORD']
-    account = os.environ['SNOWFLAKE_ACCOUNT']
-    database = os.environ['SNOWFLAKE_DATABASE']
-    schema = os.environ['SNOWFLAKE_SCHEMA']
-    warehouse = os.environ['SNOWFLAKE_WAREHOUSE']
-
-    ctx = snowflake.connector.connect(
-        user=user,
-        password=password,
-        account=account,
-        warehouse=warehouse,
-        database=database,
-        schema=schema
+def get_snowflake_connection():
+    return snowflake.connector.connect(
+        user=os.getenv("SNOWFLAKE_USER"),
+        password=os.getenv("SNOWFLAKE_PASSWORD"),
+        account=os.getenv("SNOWFLAKE_ACCOUNT"),
+        warehouse=os.getenv("SNOWFLAKE_WAREHOUSE"),
+        database=os.getenv("SNOWFLAKE_DATABASE"),
+        schema=os.getenv("SNOWFLAKE_SCHEMA"),
+        autocommit=True
     )
-    cs = ctx.cursor()
-
-    try:
-        with open(file_path, 'r') as f:
-            sql_script = f.read()
-
-        # Check for procedure file
-        if file_path.lower().endswith(".sql") and "create or replace procedure" in sql_script.lower():
-            print(f"⚙️ Executing full procedure file: {file_path}")
-            cs.execute(sql_script)
-        else:
-            print(f"📄 Executing statements from: {file_path}")
-            statements = [stmt.strip() for stmt in sql_script.split(';') if stmt.strip()]
-            for stmt in statements:
-                print(f"➡️ {stmt[:60]}{'...' if len(stmt) > 60 else ''}")
-                cs.execute(stmt)
-
-    except Exception as e:
-        print(f"❌ Failed: {e}")
-        raise e
-    finally:
-        cs.close()
-        ctx.close()
-
 
 @task
-def run_sql_file(filepath):
-    print(f"📄 Executing: {filepath}")
+def read_sql_file_list(file_path: str) -> list:
+    with open(file_path, "r") as f:
+        sql_paths = [line.strip() for line in f if line.strip()]
+    print(f"✅ Loaded SQL paths from release notes: {sql_paths}")
+    return sql_paths
+
+@task
+def categorize_sql_files(sql_file_paths: list) -> dict:
+    categories = {"TABLES": [], "VIEWS": [], "PROCEDURES": [], "TRIGGERS": []}
+    for path in sql_file_paths:
+        upper_path = path.upper()
+        if "TABLES" in upper_path:
+            categories["TABLES"].append(path)
+        elif "VIEWS" in upper_path:
+            categories["VIEWS"].append(path)
+        elif "PROCEDURES" in upper_path:
+            categories["PROCEDURES"].append(path)
+        elif "TRIGGERS" in upper_path:
+            categories["TRIGGERS"].append(path)
+    return categories
+
+@task
+def execute_sql_files(sql_file_list: list):
+    conn = get_snowflake_connection()
+
     try:
-        execute_sql_file(filepath)
-        print(f"✅ Done: {filepath}")
-    except Exception as e:
-        print(f"❌ Error in {filepath}: {e}")
-        raise e
+        for sql_file in sql_file_list:
+            normalized_path = ROOT_DIR / sql_file
+
+            print(f"\n🔍 Checking for file: {normalized_path}")
+            if not normalized_path.exists():
+                print(f"❌ File not found: {normalized_path}")
+                continue
+
+            print(f"\n📂 Running: {sql_file}")
+            try:
+                with conn.cursor() as cur, open(normalized_path, "r") as f:
+                    cur.execute(f"USE DATABASE {os.getenv('SNOWFLAKE_DATABASE')}")
+                    cur.execute(f"USE SCHEMA {os.getenv('SNOWFLAKE_SCHEMA')}")
+
+                    sql = f.read()
+
+                    # Run full block for procedures
+                    if "create or replace procedure" in sql.lower():
+                        print("🧩 Detected stored procedure — executing as single block.")
+                        cur.execute(sql)
+                    else:
+                        import re
+                        statements = [stmt.strip() for stmt in re.split(r';\s*\n', sql) if stmt.strip()]
+                        for idx, stmt in enumerate(statements):
+                            # Don't skip statements that contain SQL + comments
+                            if stmt.lower().startswith("use") or "create" in stmt.lower() or "insert" in stmt.lower():
+                                print(f"🔹 Executing statement {idx+1}: {stmt[:60]}...")
+                                cur.execute(stmt)
+                            else:
+                                print(f"⚠️ Skipping non-SQL or unsupported line: {stmt[:60]}")
+                                cur.execute(stmt)
+
+                    print(f"✅ Success: {sql_file}")
+            except Exception as e:
+                print(f"❌ Error in {sql_file}:\n{e}")
+    finally:
+        conn.close()
+        print("✅ Snowflake connection closed.")
 
 @flow(name="main-flow")
-def main_flow(release_notes_path="sorted_sql.txt"):
-    print(f"📜 Reading SQL file list from: {release_notes_path}")
-    
-    if not os.path.exists(release_notes_path):
-        raise FileNotFoundError(f"{release_notes_path} not found")
+def main_flow(file_path: str):
+    sql_paths = read_sql_file_list(file_path)
+    categorized = categorize_sql_files(sql_paths)
 
-    with open(release_notes_path, 'r') as f:
-        sql_files = [line.strip() for line in f if line.strip().endswith(".sql")]
-
-    categorized = {key: [] for key in ORDER}
-    for path in sql_files:
-        for category in ORDER:
-            if f"/{category}/" in path or f"\\{category}\\" in path:
-                categorized[category].append(path)
-
-    for category in ORDER:
-        print(f"\n📂 Category: {category}")
-        if not categorized[category]:
-            print("⚠️ No files found")
-            continue
-        for file_path in categorized[category]:
-            run_sql_file(file_path)
-
+    for category, files in categorized.items():
+        if files:
+            print(f"\n🚀 Executing {category} files...")
+            execute_sql_files(files)
 
 if __name__ == "__main__":
+    import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--release-notes", help="Path to sorted SQL file list", default="sorted_sql.txt")
+    parser.add_argument(
+        "--release-notes", type=str, default="sorted_sql.txt",
+        help="Path to the sorted SQL file list"
+    )
     args = parser.parse_args()
-    main_flow(release_notes_path=args.release_notes)
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--release-notes", help="Path to release_notes.md", default="release_notes.md")
-    args = parser.parse_args()
-    main_flow(release_notes_path=args.release_notes)
+    main_flow(args.release_notes)
