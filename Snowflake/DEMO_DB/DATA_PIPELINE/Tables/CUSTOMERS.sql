@@ -1,14 +1,16 @@
+USE DATABASE YOUR_DATABASE;
+USE SCHEMA YOUR_SCHEMA;
+
 -- Customers Table
 CREATE OR REPLACE TABLE Customers (
-    CustomerID INT PRIMARY KEY,
-    FirstName STRING,
-    LastName STRING,
-    Email STRING,
-    CreatedAt TIMESTAMP
+    Customer_ID INT PRIMARY KEY,
+    Name VARCHAR(100),
+    Email VARCHAR(100),
+    Phone VARCHAR(20),
+    Address VARCHAR(255)
 );
 
 -- Insert into Customers
 INSERT INTO Customers VALUES 
-(1, 'John', 'Doe', 'john@example.com', CURRENT_TIMESTAMP),
-(2, 'Jane', 'Smith', 'jane@example.com', CURRENT_TIMESTAMP),
-(3, 'Alice', 'Johnson', 'alice@example.com', CURRENT_TIMESTAMP);
+(1, 'Alice Johnson', 'alice@example.com', '123-456-7890', '123 Main St'),
+(2, 'Bob Smith', 'bob@example.com', '234-567-8901', '456 Elm St');
