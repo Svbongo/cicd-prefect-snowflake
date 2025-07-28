@@ -51,22 +51,6 @@ jobs:
           echo "📄 Extracted SQL files:"
           cat sorted_sql.txt
         
-
-      - name: Sort SQL Files by Type
-        id: sort_sql
-        run: |
-          echo "📋 Sorting SQL files by type..."
-
-          grep -i "/TABLES/" sorted_sql.txt > tmp_sql_ordered.txt || true
-          grep -i "/PROCEDURES/" sorted_sql.txt >> tmp_sql_ordered.txt || true
-          grep -i "/VIEWS/" sorted_sql.txt >> tmp_sql_ordered.txt || true
-          grep -i "/TRIGGERS/" sorted_sql.txt >> tmp_sql_ordered.txt || true
-
-          mv tmp_sql_ordered.txt sorted_sql.txt
-
-          echo "🔄 Final execution order:"
-          cat sorted_sql.txt
-
       - name: Run Prefect Flow
         run: python flows/main_flow.py --release-notes sorted_sql.txt
         env:

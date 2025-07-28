@@ -1,9 +1,9 @@
 from prefect import flow, task
-import argparse
 from pathlib import Path
 import os
 import snowflake.connector
 
+# Adjust to the root of your repo where 'Snowflake/...' exists
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
 def get_snowflake_connection():
@@ -14,34 +14,15 @@ def get_snowflake_connection():
         warehouse=os.getenv("SNOWFLAKE_WAREHOUSE"),
         database=os.getenv("SNOWFLAKE_DATABASE"),
         schema=os.getenv("SNOWFLAKE_SCHEMA"),
-        autocommit=True  # ✅ Enables commits automatically
+        autocommit=True
     )
 
 @task
 def read_sql_file_list(file_path: str) -> list:
-    base_dirs = ["Tables", "Views", "Procedures", "Triggers"]
-    normalized_paths = []
-
     with open(file_path, "r") as f:
-        for line in f:
-            raw_path = line.strip()
-            if not raw_path:
-                continue
-
-            # Extract subpath from base dir onward
-            for base in base_dirs:
-                if base in raw_path:
-                    idx = raw_path.find(base)
-                    trimmed = raw_path[idx:]
-                    normalized_paths.append(trimmed)
-                    break
-            else:
-                print(f"⚠️ Skipping unmatched path: {raw_path}")
-
-    print(f"✅ Final normalized SQL paths: {normalized_paths}")
-    return normalized_paths
-
-
+        sql_paths = [line.strip() for line in f if line.strip()]
+    print(f"✅ Loaded SQL paths from release notes: {sql_paths}")
+    return sql_paths
 
 @task
 def categorize_sql_files(sql_file_paths: list) -> dict:
@@ -60,37 +41,37 @@ def categorize_sql_files(sql_file_paths: list) -> dict:
 
 @task
 def execute_sql_files(sql_file_list: list):
-    """Executes SQL files against Snowflake."""
     conn = get_snowflake_connection()
 
     try:
         for sql_file in sql_file_list:
             normalized_path = ROOT_DIR / sql_file
+
+            print(f"\n🔍 Checking for file: {normalized_path}")
             if not normalized_path.exists():
-                print(f"⚠️ File not found: {normalized_path}")
+                print(f"❌ File not found: {normalized_path}")
                 continue
 
             print(f"\n📂 Running: {sql_file}")
             try:
                 with conn.cursor() as cur, open(normalized_path, "r") as f:
+                    cur.execute(f"USE DATABASE {os.getenv('SNOWFLAKE_DATABASE')}")
+                    cur.execute(f"USE SCHEMA {os.getenv('SNOWFLAKE_SCHEMA')}")
+
                     sql = f.read()
 
-                    # Log current DB/schema
-                    cur.execute("SELECT CURRENT_DATABASE(), CURRENT_SCHEMA()")
-                    db, schema = cur.fetchone()
-                    print(f"🔍 Using DB: {db} | Schema: {schema}")
-
+                    # Run full block for procedures
                     if "create or replace procedure" in sql.lower():
                         print("🧩 Detected stored procedure — executing as single block.")
                         cur.execute(sql)
                     else:
                         statements = [stmt.strip() for stmt in sql.strip().split(";") if stmt.strip()]
                         for idx, stmt in enumerate(statements):
-                            if not stmt.startswith("--"):
+                            if not stmt.startswith("--") and stmt:
                                 print(f"🔹 Executing statement {idx+1}: {stmt[:60]}...")
                                 cur.execute(stmt)
 
-                print(f"✅ Success: {sql_file}")
+                    print(f"✅ Success: {sql_file}")
             except Exception as e:
                 print(f"❌ Error in {sql_file}:\n{e}")
     finally:
@@ -102,12 +83,13 @@ def main_flow(file_path: str):
     sql_paths = read_sql_file_list(file_path)
     categorized = categorize_sql_files(sql_paths)
 
-    # Flatten and execute all categorized files
-    for files in categorized.values():
+    for category, files in categorized.items():
         if files:
+            print(f"\n🚀 Executing {category} files...")
             execute_sql_files(files)
 
 if __name__ == "__main__":
+    import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--release-notes", type=str, default="sorted_sql.txt",
