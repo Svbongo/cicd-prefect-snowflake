@@ -1,0 +1,44 @@
+name: Enforce Uppercase SQL Filenames
+
+on:
+  push:
+    branches: [cicd-sql-release]  # or any branch you want
+    paths:
+      - '**/*.sql'
+
+jobs:
+  rename-sql-files:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+
+      - name: Rename .sql files to UPPERCASE (preserve .sql extension)
+        run: |
+          renamed=0
+          while IFS= read -r -d '' file; do
+            dir=$(dirname "$file")
+            base=$(basename "$file")
+            name="${base%.*}"           # name before .sql
+            ext="${base##*.}"           # get extension
+            upper_name=$(echo "$name" | tr '[:lower:]' '[:upper:]')
+            new_filename="$upper_name.sql"
+
+            if [ "$base" != "$new_filename" ]; then
+              git mv "$file" "$dir/$new_filename"
+              renamed=1
+              echo "Renamed: $file -> $dir/$new_filename"
+            fi
+          done < <(find . -type f -iname '*.sql' -print0)
+
+          if [ "$renamed" -eq 1 ]; then
+            git config user.name "github-actions"
+            git config user.email "github-actions@github.com"
+            git commit -am "🔁 Auto-rename SQL filenames (uppercase name, lowercase .sql)"
+            git push
+          else
+            echo "✅ All SQL filenames already compliant. No renames needed."
+          fi
+
+
