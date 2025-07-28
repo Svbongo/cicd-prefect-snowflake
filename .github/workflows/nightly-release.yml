@@ -64,7 +64,7 @@ jobs:
       - name: Create release notes and attach sorted_sql.txt
         run: |
           echo "📝 Modified SQL Files:" > release_notes.md
-          if [ -f sorted_sql.txt ]; then
+          if [ -s sorted_sql.txt ]; then
             while read file; do
               echo "- $file" >> release_notes.md
             done < sorted_sql.txt

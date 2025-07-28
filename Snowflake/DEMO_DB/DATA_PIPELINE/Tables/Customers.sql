@@ -14,3 +14,4 @@ CREATE OR REPLACE TABLE Customers (
 INSERT INTO Customers VALUES 
 (1, 'John', 'Doe', 'john@example.com', CURRENT_TIMESTAMP),
 (2, 'Jane', 'Smith', 'jane@example.com', CURRENT_TIMESTAMP);
+(3, 'John', 'lol', 'lol@example.com', CURRENT_TIMESTAMP);
