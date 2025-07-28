@@ -65,10 +65,15 @@ def execute_sql_files(sql_file_list: list):
                         print("🧩 Detected stored procedure — executing as single block.")
                         cur.execute(sql)
                     else:
-                        statements = [stmt.strip() for stmt in sql.strip().split(";") if stmt.strip()]
+                        import re
+                        statements = [stmt.strip() for stmt in re.split(r';\s*\n', sql) if stmt.strip()]
                         for idx, stmt in enumerate(statements):
-                            if not stmt.startswith("--") and stmt:
+                            # Don't skip statements that contain SQL + comments
+                            if stmt.lower().startswith("use") or "create" in stmt.lower() or "insert" in stmt.lower():
                                 print(f"🔹 Executing statement {idx+1}: {stmt[:60]}...")
+                                cur.execute(stmt)
+                            else:
+                                print(f"⚠️ Skipping non-SQL or unsupported line: {stmt[:60]}")
                                 cur.execute(stmt)
 
                     print(f"✅ Success: {sql_file}")
