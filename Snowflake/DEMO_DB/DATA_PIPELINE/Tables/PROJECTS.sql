@@ -1,7 +1,0 @@
-create or replace TABLE PROJECTS (
-	PROJECT_ID NUMBER(38,0) NOT NULL,
-	PROJECT_NAME VARCHAR(100),
-	BUDGET NUMBER(18,2),
-	primary key (PROJECT_ID)
-);;
-
