@@ -25,20 +25,19 @@ jobs:
           sudo apt update
           sudo apt install gh -y
 
-      - name: Fetch main branch
-        run: git fetch origin main:main
-
-      - name: Detect modified SQL files
+      - name: Fetch all branches
         run: |
-          git fetch origin
-          git diff --name-only $(git merge-base origin/main origin/cicd-sql-release)..origin/cicd-sql-release > raw_diff.txt
-
-          grep -E '\.sql$' |
-          grep -vE '^\.github/|requirements\.txt' > sorted_sql.txt
+          git fetch origin main
+          git fetch origin cicd-sql-release
+  
+      - name: Get list of changed SQL files between branches
+        id: get_diff_files
+        run: |
+          BASE_COMMIT=$(git merge-base origin/main origin/cicd-sql-release)
+          echo "Using merge base: $BASE_COMMIT"
+          git diff --name-only $BASE_COMMIT..origin/cicd-sql-release > raw_diff.txt
+          cat raw_diff.txt
       
-          cat sorted_sql.txt
-      
-
       - name: Debug detected files
         run: |
           echo "🧾 SQL files detected:"
