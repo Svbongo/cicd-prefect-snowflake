@@ -57,7 +57,7 @@ jobs:
         run: |
           echo "📄 Showing detailed line-by-line changes for modified SQL files..."
           
-          BASE_COMMIT=$(git merge-base origin/main HEAD)
+          BASE_COMMIT=origin/main
           echo "📌 Using BASE_COMMIT: $BASE_COMMIT"
           
           if [ -f sorted_sql.txt ]; then
