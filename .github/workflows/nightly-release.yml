@@ -33,9 +33,8 @@ jobs:
         run: |
           echo "🧠 Detecting new/modified .sql files between main and cicd-sql-release HEAD..."
       
-          git fetch origin main:main
-          git diff --name-status origin/main..HEAD > raw_diff.txt
-
+          git fetch origin
+          git diff --name-only origin/main..origin/cicd-sql-release > raw_diff.txt
       
           # Extract paths for added, modified, or renamed files only
           grep -Ei '\.sql$' raw_diff.txt | awk '$1 ~ /^(A|M|R100)$/ { print $2 }' > raw_sql_changes.txt || touch raw_sql_changes.txt
