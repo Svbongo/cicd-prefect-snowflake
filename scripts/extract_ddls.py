@@ -55,6 +55,8 @@ def get_objects(schema, object_key):
 
     return [row[0] for row in cursor.fetchall()]
 
+import sqlparse  # optional but useful
+
 def export_ddl(schema, object_key, name):
     folder_name = OBJECT_MAP[object_key]["folder"]
     snowflake_type = OBJECT_MAP[object_key]["type"]
@@ -68,20 +70,25 @@ def export_ddl(schema, object_key, name):
     os.makedirs(out_path, exist_ok=True)
 
     file_path = os.path.join(out_path, f"{name.upper()}.sql")
-    full_name = f"{SNOWFLAKE_DATABASE}.{schema}.{name}"
+    full_name = f'"{SNOWFLAKE_DATABASE}"."{schema}"."{name}"'
     if object_key == "PROCEDURES":
         full_name += "()"  # Required for procedures
 
     try:
         cursor.execute(f"SELECT GET_DDL('{snowflake_type}', '{full_name}')")
         ddl = cursor.fetchone()[0]
+        ddl = ddl.strip().rstrip(";")
+
+        # optional sql formatting
+        ddl = sqlparse.format(ddl, reindent=True, keyword_case='upper')
 
         with open(file_path, "w") as f:
-            f.write(ddl + ";\n\n")
+            f.write(ddl + ";\n")
 
         print(f"✅ Exported {snowflake_type} {full_name}")
     except Exception as e:
         print(f"❌ Failed to export {snowflake_type} {full_name}: {e}")
+
 
 def main():
     for schema in get_schemas():
