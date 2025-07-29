@@ -55,6 +55,20 @@ def get_objects(schema, object_key):
 
     return [row[0] for row in cursor.fetchall()]
 
+# Define common Snowflake SQL keywords to convert to uppercase
+KEYWORDS = [
+    "create or replace", "create", "replace", "table", "view", "as", "select",
+    "insert into", "values", "from", "join", "on", "group by", "order by",
+    "primary key", "foreign key", "references", "not null", "null", "number",
+    "varchar", "date"
+]
+
+def normalize_keywords(sql: str) -> str:
+    # Replace keywords in order of descending length to prevent partial overlaps
+    for keyword in sorted(KEYWORDS, key=len, reverse=True):
+        sql = sql.replace(keyword, keyword.upper())
+    return sql
+
 def export_ddl(schema, object_key, name):
     folder_name = OBJECT_MAP[object_key]["folder"]
     snowflake_type = OBJECT_MAP[object_key]["type"]
@@ -68,20 +82,30 @@ def export_ddl(schema, object_key, name):
     os.makedirs(out_path, exist_ok=True)
 
     file_path = os.path.join(out_path, f"{name.upper()}.sql")
-    full_name = f"{SNOWFLAKE_DATABASE}.{schema}.{name}"
+
+    # Quote identifiers for Snowflake compatibility
+    full_name = f'"{SNOWFLAKE_DATABASE}"."{schema}"."{name}"'
     if object_key == "PROCEDURES":
-        full_name += "()"  # Required for procedures
+        full_name += "()"  # Required syntax for procedures
 
     try:
         cursor.execute(f"SELECT GET_DDL('{snowflake_type}', '{full_name}')")
         ddl = cursor.fetchone()[0]
 
-        with open(file_path, "w") as f:
-            f.write(ddl + ";\n\n")
+        # Strip any trailing semicolon(s) and whitespace
+        ddl = ddl.strip().rstrip(";")
 
-        print(f"✅ Exported {snowflake_type} {full_name}")
+        # Normalize SQL keywords to uppercase
+        ddl = normalize_keywords(ddl)
+
+        # Write to file
+        with open(file_path, "w") as f:
+            f.write(ddl + ";\n")
+
+        print(f"✅ Exported {snowflake_type} {full_name} to {file_path}")
     except Exception as e:
         print(f"❌ Failed to export {snowflake_type} {full_name}: {e}")
+
 
 def main():
     for schema in get_schemas():
