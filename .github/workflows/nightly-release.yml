@@ -65,18 +65,18 @@ jobs:
               echo "🔍 Diff for: $file"
               echo "----------------------------------------"
           
-              # Check if the file exists in the base branch
+              # Check if file existed in base commit
               if git ls-tree -r "$BASE_COMMIT" --name-only | grep -Fqx "$file"; then
                 git diff "$BASE_COMMIT" -- "$file" || echo "⚠️ Diff failed"
               else
                 echo "⚠️ Skipped: File doesn't exist in base branch (new file)"
               fi
+          
               echo ""
             done < sorted_sql.txt
           else
             echo "❌ sorted_sql.txt not found"
           fi
-
 
       - name: Normalize SQL keywords (CREATE, VALUES, etc.)
         run: |
