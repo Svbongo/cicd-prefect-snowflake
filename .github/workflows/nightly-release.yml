@@ -52,27 +52,27 @@ jobs:
               echo "❌ No sorted_sql.txt found"
             fi
 
+
       - name: Show line-by-line changes for SQL files
         run: |
           echo "📄 Showing detailed line-by-line changes for modified SQL files..."
+          BASE_COMMIT=$(git merge-base origin/main HEAD)
           if [ -f sorted_sql.txt ]; then
             while read file; do
               echo "🔍 Diff for: $file"
               echo "----------------------------------------"
           
-            # Use origin/main as base branch instead of merge-base SHA
-            if git ls-tree -r origin/main --name-only | grep -Fiq "$file"; then
-              git diff origin/main...origin/cicd-sql-release -- "$file" || echo "⚠️ Diff failed"
-            else
-              echo "⚠️ Skipped: File doesn't exist in base branch (new file)"
-            fi
-          
-            echo ""
-          done < sorted_sql.txt
+              if git ls-tree -r $BASE_COMMIT --name-only | grep -Fqx "$file"; then
+                git diff $BASE_COMMIT -- "$file" || echo "⚠️ Diff failed"
+              else
+                echo "⚠️ Skipped: File doesn't exist in base branch (new file)"
+              fi
+              echo ""
+            done < sorted_sql.txt
           else
             echo "❌ sorted_sql.txt not found"
           fi
-          
+           
       
 
       - name: Normalize SQL keywords (CREATE, VALUES, etc.)
