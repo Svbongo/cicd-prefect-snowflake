@@ -1,9 +1,12 @@
-CREATE OR REPLACE TABLE Departments (
-    Department_ID INT PRIMARY KEY,
-    Department_Name STRING
+CREATE OR REPLACE TABLE DEMO_DB.DATA_PIPELINE.DEPARTMENTS (
+  DEPARTMENT_ID NUMBER(38,0) NOT NULL,
+  DEPARTMENT_NAME VARCHAR(16777216),
+  PRIMARY KEY (DEPARTMENT_ID)
 );
 
-INSERT INTO Departments (Department_ID, Department_Name) VALUES
-(101, 'Engineering'),
-(102, 'Marketing'),
-(103, 'Human Resources');
+INSERT INTO DEMO_DB.DATA_PIPELINE.DEPARTMENTS (DEPARTMENT_ID, DEPARTMENT_NAME) VALUES
+  (1, 'Engineering'),
+  (2, 'Marketing'),
+  (3, 'Sales'),
+  (4, 'HR'),
+  (5, 'Finance');
