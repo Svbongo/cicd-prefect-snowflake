@@ -51,7 +51,25 @@ jobs:
           else
               echo "❌ No sorted_sql.txt found"
             fi
-        
+
+      - name: Show line-by-line differences for SQL files
+        run: |
+          echo "📄 Showing detailed line-by-line changes for modified SQL files..."
+          BASE_COMMIT=$(git merge-base origin/main origin/cicd-sql-release)
+          
+          if [ -f sorted_sql.txt ]; then
+            while read file; do
+              if [ -f "$file" ]; then
+                echo "🔍 Diff for: $file"
+                echo "----------------------------------------"
+                git diff $BASE_COMMIT:$file origin/cicd-sql-release:$file || echo "⚠️ File missing in one of the branches"
+                echo ""
+              fi
+            done < sorted_sql.txt
+          else
+            echo "❌ sorted_sql.txt not found. Cannot show diffs."
+          fi
+
       - name: Normalize SQL keywords (CREATE, VALUES, etc.)
         run: |
           echo "🔧 Normalizing SQL keyword cases in modified files..."
