@@ -61,6 +61,44 @@ jobs:
               echo "❌ No sorted_sql.txt found"
             fi
         
+      - name: Normalize SQL keywords (CREATE, VALUES, etc.)
+        run: |
+          echo "🔧 Normalizing SQL keyword cases in modified files..."
+          
+          if [ -f sorted_sql.txt ]; then
+            while read file; do
+              if [ -f "$file" ]; then
+                echo "⚙️ Normalizing $file"
+                sed -i \
+                  -e 's/\bcreate or replace\b/CREATE OR REPLACE/gI' \
+                  -e 's/\bcreate table\b/CREATE TABLE/gI' \
+                  -e 's/\bcreate view\b/CREATE VIEW/gI' \
+                  -e 's/\bcreate procedure\b/CREATE PROCEDURE/gI' \
+                  -e 's/\bdrop table\b/DROP TABLE/gI' \
+                  -e 's/\bdrop view\b/DROP VIEW/gI' \
+                  -e 's/\bdrop procedure\b/DROP PROCEDURE/gI' \
+                  -e 's/\binsert into\b/INSERT INTO/gI' \
+                  -e 's/\bvalues\b/VALUES/gI' \
+                  -e 's/\bselect\b/SELECT/gI' \
+                  -e 's/\bfrom\b/FROM/gI' \
+                  -e 's/\bwhere\b/WHERE/gI' \
+                  -e 's/\bjoin\b/JOIN/gI' \
+                  -e 's/\bon\b/ON/gI' \
+                  -e 's/\bgroup by\b/GROUP BY/gI' \
+                  -e 's/\border by\b/ORDER BY/gI' \
+                  -e 's/\bprimary key\b/PRIMARY KEY/gI' \
+                  -e 's/\bforeign key\b/FOREIGN KEY/gI' \
+                  -e 's/\bnot null\b/NOT NULL/gI' \
+                  -e 's/\bnumber\b/NUMBER/gI' \
+                  -e 's/\bvarchar\b/VARCHAR/gI' \
+                  -e 's/\bdate\b/DATE/gI' \
+                  "$file"
+              fi
+            done < sorted_sql.txt
+          else
+            echo "❌ sorted_sql.txt not found. Skipping normalization."
+          fi
+    
 
       - name: Create release notes and attach sorted_sql.txt
         run: |
