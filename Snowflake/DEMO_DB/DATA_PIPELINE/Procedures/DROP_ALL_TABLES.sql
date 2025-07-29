@@ -1,14 +1,14 @@
-CREATE OR REPLACE PROCEDURE drop_all_tables()
-RETURNS STRING
+CREATE OR REPLACE PROCEDURE DEMO_DB.DATA_PIPELINE.DROP_ALL_TABLES()
+RETURNS VARCHAR
 LANGUAGE SQL
-AS
-$$
+EXECUTE AS OWNER
+AS '
 DECLARE
     cur CURSOR FOR
-        SELECT 'DROP TABLE IF EXISTS "' || table_schema || '"."' || table_name || '";' AS stmt
+        SELECT ''DROP TABLE IF EXISTS "'' || table_schema || ''"."'' || table_name || ''";'' AS stmt
         FROM information_schema.tables
         WHERE table_schema = CURRENT_SCHEMA()
-          AND table_type = 'BASE TABLE';
+          AND table_type = ''BASE TABLE'';
     sql_stmt STRING;
 BEGIN
     FOR record IN cur DO
@@ -16,6 +16,6 @@ BEGIN
         EXECUTE IMMEDIATE :sql_stmt;
     END FOR;
 
-    RETURN '✅ All base tables dropped successfully.';
+    RETURN ''✅ All base tables dropped successfully.'';
 END;
-$$;
+';
