@@ -30,17 +30,17 @@ jobs:
           git fetch origin main
           git fetch origin cicd-sql-release
   
-          - name: Get list of changed SQL files between branches
-          id: get_diff_files
-          run: |
-            BASE_COMMIT=$(git merge-base origin/main origin/cicd-sql-release)
-            echo "Using merge base: $BASE_COMMIT"
+      - name: Get list of changed SQL files between branches
+        id: get_diff_files
+        run: |
+          BASE_COMMIT=$(git merge-base origin/main origin/cicd-sql-release)
+          echo "Using merge base: $BASE_COMMIT"
             
-            # Get changed files and filter only .sql
-            git diff --name-only $BASE_COMMIT..origin/cicd-sql-release \
-              | grep '\.sql$' > sorted_sql.txt
+          # Get changed files and filter only .sql
+          git diff --name-only $BASE_COMMIT..origin/cicd-sql-release \
+            | grep '\.sql$' > sorted_sql.txt
         
-            cat sorted_sql.txt
+          cat sorted_sql.txt
         
       
       - name: Debug detected files
