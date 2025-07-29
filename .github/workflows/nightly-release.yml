@@ -59,20 +59,21 @@ jobs:
             while read file; do
               echo "🔍 Diff for: $file"
               echo "----------------------------------------"
-                  
-              # Check if the file exists in base branch
-              if git ls-tree -r b3cf9a5220925a055eb6f55b3fbce44e9c5ecbd6 --name-only | grep -Fiq "$file"; then
-                git diff b3cf9a5220925a055eb6f55b3fbce44e9c5ecbd6 -- "$file" || echo "⚠️ Diff failed"
-              else
-                echo "⚠️ Skipped: File doesn't exist in base branch (new file)"
-              fi
           
-              echo ""
-            done < sorted_sql.txt
+            # Use origin/main as base branch instead of merge-base SHA
+            if git ls-tree -r origin/main --name-only | grep -Fiq "$file"; then
+              git diff origin/main...origin/cicd-sql-release -- "$file" || echo "⚠️ Diff failed"
+            else
+              echo "⚠️ Skipped: File doesn't exist in base branch (new file)"
+            fi
+          
+            echo ""
+          done < sorted_sql.txt
           else
             echo "❌ sorted_sql.txt not found"
           fi
-    
+          
+      
 
       - name: Normalize SQL keywords (CREATE, VALUES, etc.)
         run: |
