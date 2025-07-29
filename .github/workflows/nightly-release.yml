@@ -31,9 +31,10 @@ jobs:
       - name: Detect modified SQL files
         run: |
           git fetch origin
-          git diff --name-only origin/main..origin/cicd-sql-release |
-            grep -E '\.sql$' |
-            grep -vE '^\.github/|requirements\.txt' > sorted_sql.txt
+          git diff --name-only $(git merge-base origin/main origin/cicd-sql-release)..origin/cicd-sql-release > raw_diff.txt
+
+          grep -E '\.sql$' |
+          grep -vE '^\.github/|requirements\.txt' > sorted_sql.txt
       
           cat sorted_sql.txt
       
