@@ -52,29 +52,25 @@ jobs:
               echo "❌ No sorted_sql.txt found"
             fi
 
-      - name: Show line-by-line differences for SQL files
+      - name: Show line-by-line changes for SQL files
         run: |
           echo "📄 Showing detailed line-by-line changes for modified SQL files..."
-          BASE_COMMIT=$(git merge-base origin/main origin/cicd-sql-release)
-    
           if [ -f sorted_sql.txt ]; then
             while read file; do
-              if [ -f "$file" ]; then
-                echo "🔍 Diff for: $file"
-                echo "----------------------------------------"
-    
-                # Check if file exists at BASE_COMMIT
-                if git cat-file -e "$BASE_COMMIT:$file"; then
-                  git diff "$BASE_COMMIT:$file" "origin/cicd-sql-release:$file"
-                else
-                  echo "⚠️ Skipped: File doesn't exist in base branch (new file)"
-                fi
-    
-                echo ""
+              echo "🔍 Diff for: $file"
+              echo "----------------------------------------"
+                  
+              # Check if the file exists in base branch
+              if git ls-tree -r b3cf9a5220925a055eb6f55b3fbce44e9c5ecbd6 --name-only | grep -Fiq "$file"; then
+                git diff b3cf9a5220925a055eb6f55b3fbce44e9c5ecbd6 -- "$file" || echo "⚠️ Diff failed"
+              else
+                echo "⚠️ Skipped: File doesn't exist in base branch (new file)"
               fi
+          
+              echo ""
             done < sorted_sql.txt
           else
-            echo "❌ sorted_sql.txt not found. Cannot show diffs."
+            echo "❌ sorted_sql.txt not found"
           fi
     
 
