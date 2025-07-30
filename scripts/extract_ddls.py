@@ -65,11 +65,23 @@ KEYWORDS = [
     "varchar", "date"
 ]
 
+import sqlparse
+from sqlparse.tokens import Keyword, DML
+
 def normalize_keywords(sql: str) -> str:
-    # Replace keywords in order of descending length to prevent partial overlaps
-    for keyword in sorted(KEYWORDS, key=len, reverse=True):
-        sql = sql.replace(keyword, keyword.upper())
-    return sql
+    parsed = sqlparse.parse(sql)
+    formatted = []
+
+    for stmt in parsed:
+        tokens = stmt.flatten()  # flattens nested token trees into a list
+        for token in tokens:
+            if token.ttype in Keyword or token.ttype in DML:
+                formatted.append(token.value.upper())  # Only change keywords
+            else:
+                formatted.append(token.value)  # Leave everything else as-is
+    
+    return ''.join(formatted)
+
 
 def export_ddl(schema, object_key, name):
     folder_name = OBJECT_MAP[object_key]["folder"]
