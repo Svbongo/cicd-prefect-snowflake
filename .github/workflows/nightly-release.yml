@@ -70,6 +70,30 @@ jobs:
           echo "✅ Final filtered files:"
           cat filtered_sql.txt || echo "❌ None"
 
+      - name: Show line-by-line changes for SQL files (ignoring whitespace)
+        run: |
+          echo "📄 Showing detailed line-by-line changes for modified SQL files..."
+          
+          BASE_COMMIT=origin/main
+          echo "📌 Using BASE_COMMIT: $BASE_COMMIT"
+            
+          if [ -f sorted_sql.txt ]; then
+            while read file; do
+              echo "🔍 Diff for: $file"
+              echo "----------------------------------------"
+            
+                if git ls-tree -r "$BASE_COMMIT" --name-only | grep -Fqx "$file"; then
+                  git diff -w -B "$BASE_COMMIT" -- "$file" || echo "⚠️ Diff failed"
+                else
+                  echo "⚠️ Skipped: File doesn't exist in base branch (new file)"
+                fi
+            
+              echo ""
+            done < sorted_sql.txt
+          else
+            echo "❌ sorted_sql.txt not found"
+          fi
+          
       - name: Normalize SQL keywords (CREATE, SELECT, etc.)
         run: |
           echo "🔧 Normalizing SQL keyword cases in modified files..."
