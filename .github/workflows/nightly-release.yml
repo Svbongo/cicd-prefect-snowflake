@@ -1,9 +1,9 @@
 name: Nightly SQL Release
 
 on:
-  workflow_dispatch:  # Manual trigger
+  workflow_dispatch:
   schedule:
-    - cron: '0 6 * * *'  # 2AM EST (6AM UTC)
+    - cron: '0 6 * * *'  # 2AM EST / 6AM UTC
 
 permissions:
   contents: write
@@ -25,28 +25,26 @@ jobs:
           sudo apt update
           sudo apt install gh -y
 
-      - name: Fetch all branches
+      - name: Fetch main branch
         run: |
           git fetch origin main
-          git fetch origin cicd-sql-release
 
-      - name: Get list of all changed SQL files (name only)
+      - name: Get list of all .sql files changed
         id: get_diff_files
         run: |
           BASE_COMMIT=$(git merge-base origin/main origin/cicd-sql-release)
           echo "Using merge base: $BASE_COMMIT"
 
-          git diff --name-only $BASE_COMMIT..origin/cicd-sql-release \
-            | grep '\.sql$' > sorted_sql.txt || true
+          git diff --name-only $BASE_COMMIT..origin/cicd-sql-release | grep '\.sql$' > sorted_sql.txt || true
+          echo "🧾 All changed SQL files:"
+          cat sorted_sql.txt || echo "❌ None found"
 
-          echo "🧾 All potential SQL files:"
-          cat sorted_sql.txt || echo "None"
-
-      - name: Filter SQL files with real content changes
+      - name: Filter SQL files with real content changes (ignoring whitespace)
         run: |
           echo "📄 Filtering files with meaningful changes (ignoring whitespace)..."
           BASE_COMMIT=$(git merge-base origin/main origin/cicd-sql-release)
           rm -f filtered_sql.txt
+          rm -f sql_diffs.log
 
           if [ -f sorted_sql.txt ]; then
             while read file; do
@@ -55,25 +53,30 @@ jobs:
                 DIFF=$(git diff -w -B "$BASE_COMMIT" -- "$file")
                 if [ -n "$DIFF" ]; then
                   echo "$file" >> filtered_sql.txt
+                  echo "🟢 $file" >> sql_diffs.log
+                  echo "$DIFF" >> sql_diffs.log
                 else
                   echo "⚪ Skipped (whitespace only): $file"
                 fi
               else
                 echo "$file" >> filtered_sql.txt
-                echo "🟢 New file detected: $file"
+                echo "🟢 NEW FILE: $file" >> sql_diffs.log
+                echo "-- new file --" >> sql_diffs.log
+                cat "$file" >> sql_diffs.log
               fi
             done < sorted_sql.txt
           fi
 
-          echo "✅ Final filtered SQL files:"
-          cat filtered_sql.txt || echo "❌ None with meaningful changes"
+          echo "✅ Final filtered files:"
+          cat filtered_sql.txt || echo "❌ None"
 
-      - name: Normalize SQL keywords (CREATE, VALUES, etc.)
+      - name: Normalize SQL keywords (CREATE, SELECT, etc.)
         run: |
-          echo "🔧 Normalizing SQL keyword cases..."
+          echo "🔧 Normalizing SQL keyword cases in modified files..."
           if [ -f filtered_sql.txt ]; then
             while read file; do
               if [ -f "$file" ]; then
+                echo "⚙️ Normalizing $file"
                 sed -i \
                   -e 's/\bcreate or replace\b/CREATE OR REPLACE/gI' \
                   -e 's/\bcreate table\b/CREATE TABLE/gI' \
@@ -100,6 +103,8 @@ jobs:
                   "$file"
               fi
             done < filtered_sql.txt
+          else
+            echo "❌ No filtered_sql.txt found. Skipping normalization."
           fi
 
       - name: Create release notes from filtered files
@@ -110,7 +115,7 @@ jobs:
               echo "- $file" >> release_notes.md
             done < filtered_sql.txt
           else
-            echo "- No meaningful SQL files found" >> release_notes.md
+            echo "- No SQL files with real changes" >> release_notes.md
           fi
 
       - name: Generate unique nightly tag
@@ -134,6 +139,6 @@ jobs:
             --notes-file release_notes.md \
             --target cicd-sql-release \
             --latest \
-            filtered_sql.txt release_notes.md
+            filtered_sql.txt release_notes.md sql_diffs.log
         env:
           GH_TOKEN: ${{ secrets.HUB_TOKEN }}
