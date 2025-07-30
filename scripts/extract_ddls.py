@@ -83,17 +83,28 @@ def export_ddl(schema, object_key, name):
 
     file_path = os.path.join(out_path, f"{name.upper()}.sql")
 
-    # ✅ Quote identifiers for Snowflake compatibility (case-sensitive + full qualification)
+    # ✅ Full object name for Snowflake DDL
     full_name = f'"{SNOWFLAKE_DATABASE}"."{schema}"."{name}"'
     if object_key == "PROCEDURES":
-        full_name += "()"  # Required for procedures
+        full_name += "()"  # Required syntax for procedures
 
     try:
         cursor.execute(f"SELECT GET_DDL('{snowflake_type}', '{full_name}')")
         ddl = cursor.fetchone()[0]
 
-        # Strip trailing semicolon and whitespace
+        # Strip trailing semicolons/whitespace
         ddl = ddl.strip().rstrip(";")
+
+        # 👉 Replace first line with fully qualified object name
+        # e.g., CREATE OR REPLACE TABLE "DEPARTMENTS" → CREATE OR REPLACE TABLE DEMO_DB.SCHEMA.DEPARTMENTS
+        simple_name = f'"{name}"'
+        qualified_name = f'{SNOWFLAKE_DATABASE}.{schema}.{name}'
+
+        ddl_lines = ddl.splitlines()
+        if ddl_lines and simple_name in ddl_lines[0]:
+            ddl_lines[0] = ddl_lines[0].replace(simple_name, qualified_name)
+
+        ddl = "\n".join(ddl_lines)
 
         # Normalize SQL keywords to uppercase
         ddl = normalize_keywords(ddl)
@@ -103,6 +114,7 @@ def export_ddl(schema, object_key, name):
             f.write(ddl + ";\n")
 
         print(f"✅ Exported {snowflake_type} {full_name} to {file_path}")
+
     except Exception as e:
         print(f"❌ Failed to export {snowflake_type} {full_name}: {e}")
 
