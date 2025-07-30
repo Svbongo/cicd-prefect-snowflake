@@ -69,12 +69,6 @@ def normalize_keywords(sql: str) -> str:
         sql = sql.replace(keyword, keyword.upper())
     return sql
 
-import re
-
-import re
-
-import re
-
 def export_ddl(schema, object_key, name):
     folder_name = OBJECT_MAP[object_key]["folder"]
     snowflake_type = OBJECT_MAP[object_key]["type"]
@@ -89,40 +83,27 @@ def export_ddl(schema, object_key, name):
 
     file_path = os.path.join(out_path, f"{name.upper()}.sql")
 
-    # Quoted name for GET_DDL call
-    full_name = f'"{SNOWFLAKE_DATABASE}"."{schema}"."{name}"'
-    if object_key == "PROCEDURES":
-        full_name += "()"  # Required for procedures
+    # Unquoted full name for clean DDL: DB.SCHEMA.OBJECT
+    simple_name = f"{SNOWFLAKE_DATABASE}.{schema}.{name}"
 
     try:
-        # Get the raw DDL from Snowflake
-        cursor.execute(f"SELECT GET_DDL('{snowflake_type}', '{full_name}')")
-        ddl = cursor.fetchone()[0].strip().rstrip(";")
+        # Get exact DDL with full qualification (no quotes)
+        cursor.execute(f"SELECT GET_DDL('{snowflake_type}', '{simple_name}', true)")
+        ddl = cursor.fetchone()[0]
 
-        # Normalize newlines and split into lines
-        ddl_lines = ddl.splitlines()
+        # Strip trailing semicolons/whitespace
+        ddl = ddl.strip().rstrip(";")
 
-        # Process the first line — the CREATE OR REPLACE ... line
-        if ddl_lines:
-            # Match and replace fully quoted names
-            ddl_lines[0] = re.sub(
-                r'(".*?"\.){2}(".*?")',
-                f"{SNOWFLAKE_DATABASE}.{schema}.{name}",
-                ddl_lines[0]
-            )
+        # Optional: normalize keywords to uppercase
+        ddl = normalize_keywords(ddl)
 
-        # Reconstruct and normalize keywords
-        ddl_cleaned = "\n".join(ddl_lines)
-        ddl_cleaned = normalize_keywords(ddl_cleaned)
-
+        # Write to file
         with open(file_path, "w") as f:
-            f.write(ddl_cleaned + ";\n")
+            f.write(ddl + ";\n")
 
-        print(f"✅ Exported {snowflake_type} {full_name} to {file_path}")
-
+        print(f"✅ Exported {snowflake_type} {simple_name} to {file_path}")
     except Exception as e:
-        print(f"❌ Failed to export {snowflake_type} {full_name}: {e}")
-
+        print(f"❌ Failed to export {snowflake_type} {simple_name}: {e}")
 
 
 
