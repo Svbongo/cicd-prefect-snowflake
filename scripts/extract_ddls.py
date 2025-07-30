@@ -73,6 +73,8 @@ import re
 
 import re
 
+import re
+
 def export_ddl(schema, object_key, name):
     folder_name = OBJECT_MAP[object_key]["folder"]
     snowflake_type = OBJECT_MAP[object_key]["type"]
@@ -87,38 +89,34 @@ def export_ddl(schema, object_key, name):
 
     file_path = os.path.join(out_path, f"{name.upper()}.sql")
 
-    # Fully quoted name for Snowflake's GET_DDL
+    # Quoted name for GET_DDL call
     full_name = f'"{SNOWFLAKE_DATABASE}"."{schema}"."{name}"'
     if object_key == "PROCEDURES":
         full_name += "()"  # Required for procedures
 
     try:
-        # Step 1: Get raw DDL from Snowflake
+        # Get the raw DDL from Snowflake
         cursor.execute(f"SELECT GET_DDL('{snowflake_type}', '{full_name}')")
         ddl = cursor.fetchone()[0].strip().rstrip(";")
 
-        # Step 2: Fix object name in the first line
+        # Normalize newlines and split into lines
         ddl_lines = ddl.splitlines()
-        if ddl_lines:
-            first_line = ddl_lines[0]
 
-            # Match the full object name in double quotes
-            pattern = re.compile(
-                r'CREATE OR REPLACE\s+' + snowflake_type + r'\s+"[^"]+"\."[^"]+"\."[^"]+"',
-                re.IGNORECASE
+        # Process the first line — the CREATE OR REPLACE ... line
+        if ddl_lines:
+            # Match and replace fully quoted names
+            ddl_lines[0] = re.sub(
+                r'(".*?"\.){2}(".*?")',
+                f"{SNOWFLAKE_DATABASE}.{schema}.{name}",
+                ddl_lines[0]
             )
 
-            # Replacement: unquoted full name
-            replacement = f'CREATE OR REPLACE {snowflake_type} {SNOWFLAKE_DATABASE}.{schema}.{name}'
-            ddl_lines[0] = pattern.sub(replacement, first_line)
+        # Reconstruct and normalize keywords
+        ddl_cleaned = "\n".join(ddl_lines)
+        ddl_cleaned = normalize_keywords(ddl_cleaned)
 
-        # Step 3: Reconstruct and normalize DDL
-        ddl = "\n".join(ddl_lines)
-        ddl = normalize_keywords(ddl)
-
-        # Step 4: Write to file
         with open(file_path, "w") as f:
-            f.write(ddl + ";\n")
+            f.write(ddl_cleaned + ";\n")
 
         print(f"✅ Exported {snowflake_type} {full_name} to {file_path}")
 
