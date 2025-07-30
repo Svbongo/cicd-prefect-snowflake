@@ -39,36 +39,37 @@ jobs:
           echo "🧾 All changed SQL files:"
           cat sorted_sql.txt || echo "❌ None found"
 
-      - name: Filter SQL files with real content changes (ignoring whitespace)
+      - name: Filter SQL files with meaningful changes (ignoring whitespace)
+        id: filter_real_changes
         run: |
           echo "📄 Filtering files with meaningful changes (ignoring whitespace)..."
+        
           BASE_COMMIT=$(git merge-base origin/main origin/cicd-sql-release)
-          rm -f filtered_sql.txt
-          rm -f sql_diffs.log
-
+          echo "BASE_COMMIT=$BASE_COMMIT"
+        
+          # Create a new temp file to hold truly changed files
+          touch _filtered_sql.txt
+        
           if [ -f sorted_sql.txt ]; then
             while read file; do
-              echo "🔍 Checking $file"
-              if git ls-tree -r "$BASE_COMMIT" --name-only | grep -Fqx "$file"; then
-                DIFF=$(git diff -w -B "$BASE_COMMIT" -- "$file")
-                if [ -n "$DIFF" ]; then
-                  echo "$file" >> filtered_sql.txt
-                  echo "🟢 $file" >> sql_diffs.log
-                  echo "$DIFF" >> sql_diffs.log
+              echo "🔍 Checking diff for: $file"
+                if git diff -w -B --quiet "$BASE_COMMIT" -- "$file"; then
+                  echo "⛔ Ignored (whitespace-only or unchanged): $file"
                 else
-                  echo "⚪ Skipped (whitespace only): $file"
+                  echo "$file" >> _filtered_sql.txt
+                  echo "✅ Real change detected in: $file"
                 fi
-              else
-                echo "$file" >> filtered_sql.txt
-                echo "🟢 NEW FILE: $file" >> sql_diffs.log
-                echo "-- new file --" >> sql_diffs.log
-                cat "$file" >> sql_diffs.log
-              fi
-            done < sorted_sql.txt
+              done < sorted_sql.txt
+          else
+            echo "❌ sorted_sql.txt not found"
           fi
-
-          echo "✅ Final filtered files:"
-          cat filtered_sql.txt || echo "❌ None"
+        
+          # Replace sorted_sql.txt with filtered version
+          mv _filtered_sql.txt sorted_sql.txt
+        
+          echo "✅ Final filtered SQL files:"
+          cat sorted_sql.txt
+        
 
       - name: Show line-by-line changes for SQL files (ignoring whitespace)
         run: |
@@ -93,7 +94,7 @@ jobs:
           else
             echo "❌ sorted_sql.txt not found"
           fi
-          
+
       - name: Normalize SQL keywords (CREATE, SELECT, etc.)
         run: |
           echo "🔧 Normalizing SQL keyword cases in modified files..."
