@@ -84,7 +84,7 @@ def export_ddl(schema, object_key, name):
     file_path = os.path.join(out_path, f"{name.upper()}.sql")
 
     # Quote identifiers for Snowflake compatibility
-    full_name = f'"{SNOWFLAKE_DATABASE}"."{schema}"."{name}"'
+    full_name = f"{SNOWFLAKE_DATABASE}.{schema}.{name}"
     if object_key == "PROCEDURES":
         full_name += "()"  # Required syntax for procedures
 
