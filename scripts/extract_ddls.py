@@ -47,9 +47,11 @@ def get_objects(schema, object_key):
         """)
     elif object_key == "PROCEDURES":
         cursor.execute(f"""
-            SELECT PROCEDURE_NAME FROM {SNOWFLAKE_DATABASE}.INFORMATION_SCHEMA.PROCEDURES
+            SELECT PROCEDURE_NAME
+            FROM {SNOWFLAKE_DATABASE}.INFORMATION_SCHEMA.PROCEDURES
             WHERE PROCEDURE_SCHEMA = '{schema}'
         """)
+    # this already gives the correct case name — so just ensure you DO NOT force .upper() in your filename or full_name
     else:
         raise ValueError(f"Unsupported object type: {object_key}")
 
