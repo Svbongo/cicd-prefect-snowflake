@@ -35,22 +35,21 @@ jobs:
         run: |
           BASE_COMMIT=$(git merge-base origin/main origin/cicd-sql-release)
           echo "Using merge base: $BASE_COMMIT"
-            
-          # Get changed files and filter only .sql
-          git diff --name-only $BASE_COMMIT..origin/cicd-sql-release \
-            | grep '\.sql$' > sorted_sql.txt
+              
+          # Get changed SQL files (ignoring formatting-only changes)
+          git diff -w --ignore-blank-lines --name-only "$BASE_COMMIT..origin/cicd-sql-release" \
+            | grep '\.sql$' | sort > sorted_sql.txt
         
           cat sorted_sql.txt
         
-      
       - name: Debug detected files
         run: |
           echo "🧾 SQL files detected:"
           if [ -f sorted_sql.txt ]; then
             cat sorted_sql.txt
           else
-              echo "❌ No sorted_sql.txt found"
-            fi
+            echo "❌ No sorted_sql.txt found"
+          fi
 
 
       - name: Show line-by-line changes for SQL files (ignoring whitespace)
