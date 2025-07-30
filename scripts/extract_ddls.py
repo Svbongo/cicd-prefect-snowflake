@@ -71,6 +71,8 @@ def normalize_keywords(sql: str) -> str:
 
 import re
 
+import re
+
 def export_ddl(schema, object_key, name):
     folder_name = OBJECT_MAP[object_key]["folder"]
     snowflake_type = OBJECT_MAP[object_key]["type"]
@@ -85,30 +87,36 @@ def export_ddl(schema, object_key, name):
 
     file_path = os.path.join(out_path, f"{name.upper()}.sql")
 
-    # Fully quoted name for GET_DDL
+    # Fully quoted name for Snowflake's GET_DDL
     full_name = f'"{SNOWFLAKE_DATABASE}"."{schema}"."{name}"'
     if object_key == "PROCEDURES":
         full_name += "()"  # Required for procedures
 
     try:
+        # Step 1: Get raw DDL from Snowflake
         cursor.execute(f"SELECT GET_DDL('{snowflake_type}', '{full_name}')")
         ddl = cursor.fetchone()[0].strip().rstrip(";")
 
-        # Replace quoted identifier with unquoted full name in the first line
+        # Step 2: Fix object name in the first line
         ddl_lines = ddl.splitlines()
         if ddl_lines:
-            original_line = ddl_lines[0]
+            first_line = ddl_lines[0]
 
-            # Match any quoted object name in the first line
-            pattern = re.compile(r'CREATE OR REPLACE (TABLE|VIEW|PROCEDURE)\s+"[^"]+"\."[^"]+"\."[^"]+"', re.IGNORECASE)
-            qualified = f"CREATE OR REPLACE {snowflake_type} {SNOWFLAKE_DATABASE}.{schema}.{name}".upper()
-            ddl_lines[0] = pattern.sub(qualified, original_line)
+            # Match the full object name in double quotes
+            pattern = re.compile(
+                r'CREATE OR REPLACE\s+' + snowflake_type + r'\s+"[^"]+"\."[^"]+"\."[^"]+"',
+                re.IGNORECASE
+            )
 
-            ddl = "\n".join(ddl_lines)
+            # Replacement: unquoted full name
+            replacement = f'CREATE OR REPLACE {snowflake_type} {SNOWFLAKE_DATABASE}.{schema}.{name}'
+            ddl_lines[0] = pattern.sub(replacement, first_line)
 
-        # Normalize remaining SQL keywords
+        # Step 3: Reconstruct and normalize DDL
+        ddl = "\n".join(ddl_lines)
         ddl = normalize_keywords(ddl)
 
+        # Step 4: Write to file
         with open(file_path, "w") as f:
             f.write(ddl + ";\n")
 
