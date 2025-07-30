@@ -53,7 +53,7 @@ jobs:
             fi
 
 
-      - name: Show line-by-line changes for SQL files
+      - name: Show line-by-line changes for SQL files (ignoring whitespace)
         run: |
           echo "📄 Showing detailed line-by-line changes for modified SQL files..."
           
@@ -65,9 +65,8 @@ jobs:
               echo "🔍 Diff for: $file"
               echo "----------------------------------------"
           
-              # Check if file existed in base commit
               if git ls-tree -r "$BASE_COMMIT" --name-only | grep -Fqx "$file"; then
-                git diff "$BASE_COMMIT" -- "$file" || echo "⚠️ Diff failed"
+                git diff -w -B "$BASE_COMMIT" -- "$file" || echo "⚠️ Diff failed"
               else
                 echo "⚠️ Skipped: File doesn't exist in base branch (new file)"
               fi
@@ -77,7 +76,7 @@ jobs:
           else
             echo "❌ sorted_sql.txt not found"
           fi
-
+          
       - name: Normalize SQL keywords (CREATE, VALUES, etc.)
         run: |
           echo "🔧 Normalizing SQL keyword cases in modified files..."
