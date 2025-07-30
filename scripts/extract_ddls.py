@@ -69,6 +69,8 @@ def normalize_keywords(sql: str) -> str:
         sql = sql.replace(keyword, keyword.upper())
     return sql
 
+import re
+
 def export_ddl(schema, object_key, name):
     folder_name = OBJECT_MAP[object_key]["folder"]
     snowflake_type = OBJECT_MAP[object_key]["type"]
@@ -83,37 +85,30 @@ def export_ddl(schema, object_key, name):
 
     file_path = os.path.join(out_path, f"{name.upper()}.sql")
 
-    # Full object name to fetch from Snowflake
+    # Fully quoted name for GET_DDL
     full_name = f'"{SNOWFLAKE_DATABASE}"."{schema}"."{name}"'
     if object_key == "PROCEDURES":
-        full_name += "()"  # Procedures need empty parentheses
+        full_name += "()"  # Required for procedures
 
     try:
         cursor.execute(f"SELECT GET_DDL('{snowflake_type}', '{full_name}')")
         ddl = cursor.fetchone()[0].strip().rstrip(";")
 
-        # Replace first line with fully qualified object name
+        # Replace quoted identifier with unquoted full name in the first line
         ddl_lines = ddl.splitlines()
         if ddl_lines:
             original_line = ddl_lines[0]
-            qualified_name = f"{SNOWFLAKE_DATABASE}.{schema}.{name}"
 
-            # Try replacing just "OBJECT"
-            if f'"{name}"' in original_line:
-                ddl_lines[0] = original_line.replace(f'"{name}"', qualified_name)
-            # If the full "SCHEMA"."OBJECT" exists
-            elif f'"{schema}"."{name}"' in original_line:
-                ddl_lines[0] = original_line.replace(f'"{schema}"."{name}"', qualified_name)
-            # If "DB"."SCHEMA"."OBJECT" exists (sometimes Snowflake adds this too)
-            elif f'"{SNOWFLAKE_DATABASE}"."{schema}"."{name}"' in original_line:
-                ddl_lines[0] = original_line.replace(f'"{SNOWFLAKE_DATABASE}"."{schema}"."{name}"', qualified_name)
+            # Match any quoted object name in the first line
+            pattern = re.compile(r'CREATE OR REPLACE (TABLE|VIEW|PROCEDURE)\s+"[^"]+"\."[^"]+"\."[^"]+"', re.IGNORECASE)
+            qualified = f"CREATE OR REPLACE {snowflake_type} {SNOWFLAKE_DATABASE}.{schema}.{name}".upper()
+            ddl_lines[0] = pattern.sub(qualified, original_line)
 
             ddl = "\n".join(ddl_lines)
 
-        # Normalize keywords
+        # Normalize remaining SQL keywords
         ddl = normalize_keywords(ddl)
 
-        # Save to file
         with open(file_path, "w") as f:
             f.write(ddl + ";\n")
 
@@ -121,6 +116,7 @@ def export_ddl(schema, object_key, name):
 
     except Exception as e:
         print(f"❌ Failed to export {snowflake_type} {full_name}: {e}")
+
 
 
 
