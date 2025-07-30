@@ -26,80 +26,47 @@ jobs:
           sudo apt install gh -y
 
       - name: Fetch main branch
-        run: |
-          git fetch origin main
+        run: git fetch origin main
 
-      - name: Get list of all .sql files changed
-        id: get_diff_files
+      - name: Get all changed SQL files (raw diff)
+        id: get_diff
         run: |
           BASE_COMMIT=$(git merge-base origin/main origin/cicd-sql-release)
           echo "Using merge base: $BASE_COMMIT"
 
-          git diff --name-only $BASE_COMMIT..origin/cicd-sql-release | grep '\.sql$' > sorted_sql.txt || true
-          echo "🧾 All changed SQL files:"
-          cat sorted_sql.txt || echo "❌ None found"
+          git diff --name-only $BASE_COMMIT..origin/cicd-sql-release | grep '\.sql$' | sort > all_sql.txt || true
+          echo "🧾 All SQL file changes:"
+          cat all_sql.txt || echo "❌ None found"
 
-      - name: Filter SQL files with meaningful changes (ignoring whitespace)
-        id: filter_real_changes
+      - name: Filter SQL files with real changes (ignoring whitespace)
+        id: filter_changes
         run: |
-          echo "📄 Filtering files with meaningful changes (ignoring whitespace)..."
-        
           BASE_COMMIT=$(git merge-base origin/main origin/cicd-sql-release)
-          echo "BASE_COMMIT=$BASE_COMMIT"
-        
-          # Create a new temp file to hold truly changed files
-          touch _filtered_sql.txt
-        
-          if [ -f sorted_sql.txt ]; then
-            while read file; do
-              echo "🔍 Checking diff for: $file"
-                if git diff -w -B --quiet "$BASE_COMMIT" -- "$file"; then
-                  echo "⛔ Ignored (whitespace-only or unchanged): $file"
-                else
-                  echo "$file" >> _filtered_sql.txt
-                  echo "✅ Real change detected in: $file"
-                fi
-              done < sorted_sql.txt
-          else
-            echo "❌ sorted_sql.txt not found"
-          fi
-        
-          # Replace sorted_sql.txt with filtered version
-          mv _filtered_sql.txt sorted_sql.txt
-        
-          echo "✅ Final filtered SQL files:"
-          cat sorted_sql.txt
-        
+          > sorted_sql.txt
+          > sql_diffs.log
 
-      - name: Show line-by-line changes for SQL files (ignoring whitespace)
-        run: |
-          echo "📄 Showing detailed line-by-line changes for modified SQL files..."
-          
-          BASE_COMMIT=origin/main
-          echo "📌 Using BASE_COMMIT: $BASE_COMMIT"
-            
-          if [ -f sorted_sql.txt ]; then
-            while read file; do
-              echo "🔍 Diff for: $file"
-              echo "----------------------------------------"
-            
-                if git ls-tree -r "$BASE_COMMIT" --name-only | grep -Fqx "$file"; then
-                  git diff -w -B "$BASE_COMMIT" -- "$file" || echo "⚠️ Diff failed"
-                else
-                  echo "⚠️ Skipped: File doesn't exist in base branch (new file)"
-                fi
-            
-              echo ""
-            done < sorted_sql.txt
-          else
-            echo "❌ sorted_sql.txt not found"
-          fi
+          while read -r file; do
+            echo "🔍 Checking diff for: $file"
+            if git diff -w -B --quiet "$BASE_COMMIT" -- "$file"; then
+              echo "⛔ Skipped (whitespace only): $file"
+            else
+              echo "$file" >> sorted_sql.txt
+              echo "✅ Real change in: $file"
+              echo "🔍 Diff for: $file" >> sql_diffs.log
+              echo "----------------------------------------" >> sql_diffs.log
+              git diff -w -B "$BASE_COMMIT" -- "$file" >> sql_diffs.log
+              echo "" >> sql_diffs.log
+            fi
+          done < all_sql.txt
 
-      - name: Normalize SQL keywords (CREATE, SELECT, etc.)
+          echo "✅ Final filtered files:"
+          cat sorted_sql.txt || echo "❌ No real changes"
+
+      - name: Normalize SQL keyword casing
         run: |
-          echo "🔧 Normalizing SQL keyword cases in modified files..."
-          if [ -f filtered_sql.txt ]; then
-            while read file; do
+          echo "🔧 Normalizing SQL keyword cases..."
+          if [ -s sorted_sql.txt ]; then
+            while read -r file; do
               if [ -f "$file" ]; then
                 echo "⚙️ Normalizing $file"
                 sed -i \
@@ -127,18 +94,18 @@ jobs:
                   -e 's/\bdate\b/DATE/gI' \
                   "$file"
               fi
-            done < filtered_sql.txt
+            done < sorted_sql.txt
           else
-            echo "❌ No filtered_sql.txt found. Skipping normalization."
+            echo "❌ No filtered SQL files found."
           fi
 
-      - name: Create release notes from filtered files
+      - name: Create release notes
         run: |
           echo "📝 Modified SQL Files:" > release_notes.md
-          if [ -s filtered_sql.txt ]; then
-            while read file; do
+          if [ -s sorted_sql.txt ]; then
+            while read -r file; do
               echo "- $file" >> release_notes.md
-            done < filtered_sql.txt
+            done < sorted_sql.txt
           else
             echo "- No SQL files with real changes" >> release_notes.md
           fi
@@ -157,13 +124,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.HUB_TOKEN }}
 
-      - name: Create new nightly release
+      - name: Create GitHub Release
         run: |
           gh release create "${{ steps.generate_tag.outputs.tag_name }}" \
             --title "Nightly SQL Release - $(date '+%Y-%m-%d %H:%M:%S')" \
             --notes-file release_notes.md \
             --target cicd-sql-release \
             --latest \
-            filtered_sql.txt release_notes.md sql_diffs.log
+            sorted_sql.txt release_notes.md sql_diffs.log
         env:
           GH_TOKEN: ${{ secrets.HUB_TOKEN }}
