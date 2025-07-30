@@ -86,11 +86,15 @@ def export_ddl(schema, object_key, name):
     file_path = os.path.join(out_path, f"{name.upper()}.sql")
 
     # Unquoted full name for clean DDL: DB.SCHEMA.OBJECT
-    simple_name = f"{SNOWFLAKE_DATABASE}.{schema}.{name}"
+    # Always double quote name to preserve case for case-sensitive objects
+    quoted_name = f'"{name}"'
+    full_name = f'{SNOWFLAKE_DATABASE}.{schema}.{quoted_name}'
+    if object_key == "PROCEDURES":
+        full_name += "()"  # include () for parameterless procedures
 
     try:
         # Get exact DDL with full qualification (no quotes)
-        cursor.execute(f"SELECT GET_DDL('{snowflake_type}', '{simple_name}', true)")
+        cursor.execute(f"SELECT GET_DDL('{snowflake_type}', '{full_name}', true)")
         ddl = cursor.fetchone()[0]
 
         # Strip trailing semicolons/whitespace
