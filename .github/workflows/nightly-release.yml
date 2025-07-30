@@ -1,7 +1,7 @@
 name: Nightly SQL Release
 
 on:
-  workflow_dispatch:  # ⛔ No branches here
+  workflow_dispatch:  # Manual trigger
   schedule:
     - cron: '0 6 * * *'  # 2AM EST (6AM UTC)
 
@@ -29,61 +29,51 @@ jobs:
         run: |
           git fetch origin main
           git fetch origin cicd-sql-release
-  
-      - name: Get list of changed SQL files between branches
+
+      - name: Get list of all changed SQL files (name only)
         id: get_diff_files
         run: |
           BASE_COMMIT=$(git merge-base origin/main origin/cicd-sql-release)
           echo "Using merge base: $BASE_COMMIT"
-              
-          # Get changed SQL files (ignoring formatting-only changes)
-          git diff -w --ignore-blank-lines --name-only "$BASE_COMMIT..origin/cicd-sql-release" \
-            | grep '\.sql$' | sort > sorted_sql.txt
-        
-          cat sorted_sql.txt
-        
-      - name: Debug detected files
-        run: |
-          echo "🧾 SQL files detected:"
-          if [ -f sorted_sql.txt ]; then
-            cat sorted_sql.txt
-          else
-            echo "❌ No sorted_sql.txt found"
-          fi
 
+          git diff --name-only $BASE_COMMIT..origin/cicd-sql-release \
+            | grep '\.sql$' > sorted_sql.txt || true
 
-      - name: Show line-by-line changes for SQL files (ignoring whitespace)
+          echo "🧾 All potential SQL files:"
+          cat sorted_sql.txt || echo "None"
+
+      - name: Filter SQL files with real content changes
         run: |
-          echo "📄 Showing detailed line-by-line changes for modified SQL files..."
-          
-          BASE_COMMIT=origin/main
-          echo "📌 Using BASE_COMMIT: $BASE_COMMIT"
-          
+          echo "📄 Filtering files with meaningful changes (ignoring whitespace)..."
+          BASE_COMMIT=$(git merge-base origin/main origin/cicd-sql-release)
+          rm -f filtered_sql.txt
+
           if [ -f sorted_sql.txt ]; then
             while read file; do
-              echo "🔍 Diff for: $file"
-              echo "----------------------------------------"
-          
+              echo "🔍 Checking $file"
               if git ls-tree -r "$BASE_COMMIT" --name-only | grep -Fqx "$file"; then
-                git diff -w -B "$BASE_COMMIT" -- "$file" || echo "⚠️ Diff failed"
+                DIFF=$(git diff -w -B "$BASE_COMMIT" -- "$file")
+                if [ -n "$DIFF" ]; then
+                  echo "$file" >> filtered_sql.txt
+                else
+                  echo "⚪ Skipped (whitespace only): $file"
+                fi
               else
-                echo "⚠️ Skipped: File doesn't exist in base branch (new file)"
+                echo "$file" >> filtered_sql.txt
+                echo "🟢 New file detected: $file"
               fi
-          
-              echo ""
             done < sorted_sql.txt
-          else
-            echo "❌ sorted_sql.txt not found"
           fi
-          
+
+          echo "✅ Final filtered SQL files:"
+          cat filtered_sql.txt || echo "❌ None with meaningful changes"
+
       - name: Normalize SQL keywords (CREATE, VALUES, etc.)
         run: |
-          echo "🔧 Normalizing SQL keyword cases in modified files..."
-          
-          if [ -f sorted_sql.txt ]; then
+          echo "🔧 Normalizing SQL keyword cases..."
+          if [ -f filtered_sql.txt ]; then
             while read file; do
               if [ -f "$file" ]; then
-                echo "⚙️ Normalizing $file"
                 sed -i \
                   -e 's/\bcreate or replace\b/CREATE OR REPLACE/gI' \
                   -e 's/\bcreate table\b/CREATE TABLE/gI' \
@@ -109,23 +99,19 @@ jobs:
                   -e 's/\bdate\b/DATE/gI' \
                   "$file"
               fi
-            done < sorted_sql.txt
-          else
-            echo "❌ sorted_sql.txt not found. Skipping normalization."
+            done < filtered_sql.txt
           fi
-    
 
-      - name: Create release notes and attach sorted_sql.txt
+      - name: Create release notes from filtered files
         run: |
           echo "📝 Modified SQL Files:" > release_notes.md
-          if [ -s sorted_sql.txt ]; then
+          if [ -s filtered_sql.txt ]; then
             while read file; do
               echo "- $file" >> release_notes.md
-            done < sorted_sql.txt
+            done < filtered_sql.txt
           else
-            echo "- No SQL files found" >> release_notes.md
+            echo "- No meaningful SQL files found" >> release_notes.md
           fi
-        
 
       - name: Generate unique nightly tag
         id: generate_tag
@@ -141,13 +127,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.HUB_TOKEN }}
 
-      - name: Create new nightly release (not draft, marked as latest)
+      - name: Create new nightly release
         run: |
           gh release create "${{ steps.generate_tag.outputs.tag_name }}" \
             --title "Nightly SQL Release - $(date '+%Y-%m-%d %H:%M:%S')" \
             --notes-file release_notes.md \
             --target cicd-sql-release \
             --latest \
-            sorted_sql.txt release_notes.md   # ✅ Attach files
+            filtered_sql.txt release_notes.md
         env:
           GH_TOKEN: ${{ secrets.HUB_TOKEN }}
