@@ -83,33 +83,37 @@ def export_ddl(schema, object_key, name):
 
     file_path = os.path.join(out_path, f"{name.upper()}.sql")
 
-    # ✅ Full object name for Snowflake DDL
+    # Full object name to fetch from Snowflake
     full_name = f'"{SNOWFLAKE_DATABASE}"."{schema}"."{name}"'
     if object_key == "PROCEDURES":
-        full_name += "()"  # Required syntax for procedures
+        full_name += "()"  # Procedures need empty parentheses
 
     try:
         cursor.execute(f"SELECT GET_DDL('{snowflake_type}', '{full_name}')")
-        ddl = cursor.fetchone()[0]
+        ddl = cursor.fetchone()[0].strip().rstrip(";")
 
-        # Strip trailing semicolons/whitespace
-        ddl = ddl.strip().rstrip(";")
-
-        # 👉 Replace first line with fully qualified object name
-        # e.g., CREATE OR REPLACE TABLE "DEPARTMENTS" → CREATE OR REPLACE TABLE DEMO_DB.SCHEMA.DEPARTMENTS
-        simple_name = f'"{name}"'
-        qualified_name = f'{SNOWFLAKE_DATABASE}.{schema}.{name}'
-
+        # Replace first line with fully qualified object name
         ddl_lines = ddl.splitlines()
-        if ddl_lines and simple_name in ddl_lines[0]:
-            ddl_lines[0] = ddl_lines[0].replace(simple_name, qualified_name)
+        if ddl_lines:
+            original_line = ddl_lines[0]
+            qualified_name = f"{SNOWFLAKE_DATABASE}.{schema}.{name}"
 
-        ddl = "\n".join(ddl_lines)
+            # Try replacing just "OBJECT"
+            if f'"{name}"' in original_line:
+                ddl_lines[0] = original_line.replace(f'"{name}"', qualified_name)
+            # If the full "SCHEMA"."OBJECT" exists
+            elif f'"{schema}"."{name}"' in original_line:
+                ddl_lines[0] = original_line.replace(f'"{schema}"."{name}"', qualified_name)
+            # If "DB"."SCHEMA"."OBJECT" exists (sometimes Snowflake adds this too)
+            elif f'"{SNOWFLAKE_DATABASE}"."{schema}"."{name}"' in original_line:
+                ddl_lines[0] = original_line.replace(f'"{SNOWFLAKE_DATABASE}"."{schema}"."{name}"', qualified_name)
 
-        # Normalize SQL keywords to uppercase
+            ddl = "\n".join(ddl_lines)
+
+        # Normalize keywords
         ddl = normalize_keywords(ddl)
 
-        # Write to file
+        # Save to file
         with open(file_path, "w") as f:
             f.write(ddl + ";\n")
 
@@ -117,6 +121,7 @@ def export_ddl(schema, object_key, name):
 
     except Exception as e:
         print(f"❌ Failed to export {snowflake_type} {full_name}: {e}")
+
 
 
 def main():
