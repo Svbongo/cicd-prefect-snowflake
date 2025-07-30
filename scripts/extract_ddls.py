@@ -83,16 +83,16 @@ def export_ddl(schema, object_key, name):
 
     file_path = os.path.join(out_path, f"{name.upper()}.sql")
 
-    # Quote identifiers for Snowflake compatibility
-    full_name = f"{SNOWFLAKE_DATABASE}.{schema}.{name}"
+    # ✅ Quote identifiers for Snowflake compatibility (case-sensitive + full qualification)
+    full_name = f'"{SNOWFLAKE_DATABASE}"."{schema}"."{name}"'
     if object_key == "PROCEDURES":
-        full_name += "()"  # Required syntax for procedures
+        full_name += "()"  # Required for procedures
 
     try:
         cursor.execute(f"SELECT GET_DDL('{snowflake_type}', '{full_name}')")
         ddl = cursor.fetchone()[0]
 
-        # Strip any trailing semicolon(s) and whitespace
+        # Strip trailing semicolon and whitespace
         ddl = ddl.strip().rstrip(";")
 
         # Normalize SQL keywords to uppercase
