@@ -47,4 +47,3 @@ jobs:
         git add .
         git diff-index --quiet HEAD || git commit -m "Auto-sync: Snowflake DDLs and Data"
         git push https://x-access-token:${HUB_TOKEN}@github.com/${{ github.repository }}.git HEAD:main
-      
