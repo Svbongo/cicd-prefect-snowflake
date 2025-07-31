@@ -42,21 +42,23 @@ jobs:
       - name: Filter and show diffs for files with real visible changes
         run: |
           echo "📄 Showing detailed line-by-line changes for SQL files..."
-            
+        
           BASE_COMMIT=origin/main
           echo "📌 Using BASE_COMMIT: $BASE_COMMIT"
-  
+        
           # Temporary holders
           > sql_diffs.log
           > _visible_changes.txt
-  
+        
           if [ -f sorted_sql.txt ]; then
             while read file; do
               echo "🔍 Diff for: $file"
               echo "----------------------------------------" | tee -a sql_diffs.log
               echo "🔍 $file" >> sql_diffs.log
-  
+        
+                # Check if file exists in the base branch
                 if git ls-tree -r "$BASE_COMMIT" --name-only | grep -Fqx "$file"; then
+                  # Diff against base, ignoring whitespace & moved blocks
                   DIFF_OUTPUT=$(git diff -w -B "$BASE_COMMIT" -- "$file")
                   if [ -n "$DIFF_OUTPUT" ]; then
                     echo "$DIFF_OUTPUT" | tee -a sql_diffs.log
@@ -65,17 +67,23 @@ jobs:
                     echo "⚠️ No visible changes in $file"
                   fi
                 else
-                  echo "⚠️ Skipped: $file does not exist in base branch" | tee -a sql_diffs.log
+                  # New file – include its content in the log and mark as changed
+                  echo "🆕 New file detected: $file" | tee -a sql_diffs.log
+                  echo "" >> sql_diffs.log
+                  cat "$file" | tee -a sql_diffs.log
+                  echo "$file" >> _visible_changes.txt
                 fi
+        
               echo "" >> sql_diffs.log
             done < sorted_sql.txt
-  
-            # Replace old sorted_sql.txt with only truly changed files
-            mv _visible_changes.txt sorted_sql.txt
-          else
-            echo "❌ sorted_sql.txt not found"
-          fi
-  
+        
+              # Replace old file list with only real changes
+              mv _visible_changes.txt sorted_sql.txt
+            else
+              echo "❌ sorted_sql.txt not found"
+              fi
+        
+        
       - name: Normalize SQL keywords (CREATE, SELECT, etc.)
         run: |
           echo "🔧 Normalizing SQL keyword cases in modified files..."
