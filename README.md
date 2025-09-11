@@ -263,17 +263,6 @@ jobs:
 
 ---
 
-## 🖼️ Visuals
-Add screenshots or diagrams of:
-- Prefect UI runs
-- GitHub Actions pipeline
-- Snowflake query history
-
-<!-- ![Prefect UI](docs/images/prefect-ui.png) -->
-<!-- ![CI Pipeline](docs/images/ci-pipeline.png) -->
-
----
-
 ## 🏆 Achievements
 - Automated deployment of Prefect flows on every merge to main
 - Consistent quality gates via linting, typing, and tests
@@ -291,11 +280,3 @@ Contributions are welcome! Please:
 1. Open an issue describing your change
 2. Create a feature branch
 3. Submit a PR with clear description and tests
-
----
-
-## 📝 License
-Add your preferred license (e.g., MIT). If using MIT, create a `LICENSE` file and reference it here.
-
----
-```
